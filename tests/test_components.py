@@ -96,7 +96,7 @@ def night_timeline():
 
 def test_timeline_has_no_transitions_and_a_handover_line(night_timeline):
     fig = night_timeline
-    assert fig.layout.transition.duration == 0 and not fig.frames
+    assert not fig.layout.transition.duration and not fig.frames
     assert fig.layout.shapes[0].line.dash == "dash"
     assert fig.layout.annotations[0].text == "Handover 07:00"
     assert fig.layout.xaxis.dtick == 2 * 3600 * 1000

@@ -10,13 +10,15 @@ and the signed-off handover record.
 import streamlit as st
 
 from src import llm
+from src.brand import FAVICON
 from src.load import DEFAULT_SHIFT, SHIFTS
 from src.pipeline import run
 from ui import before_you_go, home
-from ui.components import CSS, show
+from ui.components import CSS, logo, show
 
-st.set_page_config(page_title="Baton", layout="wide")
+st.set_page_config(page_title="Baton", page_icon=str(FAVICON), layout="wide")
 show(CSS)
+show(logo())
 
 st.session_state.setdefault("page", "home")
 st.session_state.setdefault("state_version", 0)
@@ -50,7 +52,8 @@ with st.sidebar:
     st.caption(f"Model: `{llm.model_name()}`" if use_llm else "Demo mode: offline, no API calls.")
 
 # ----- top bar: which handover, who is taking over, and the outgoing engineer's page -----
-top = st.columns([3, 2, 2], vertical_alignment="bottom")
+with st.container(key="baton-top"):
+    top = st.columns([3, 2, 2], vertical_alignment="bottom")
 with top[0]:
     shift_id = st.radio("Handover", list(SHIFTS), format_func=lambda s: SHIFTS[s].label, horizontal=True,
                         index=list(SHIFTS).index(DEFAULT_SHIFT), key="shift")

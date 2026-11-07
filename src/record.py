@@ -6,6 +6,7 @@ from datetime import datetime
 from pathlib import Path
 
 from src import respond, review, state
+from src.brand import inline_svg
 from src.due import due_label
 
 
@@ -128,6 +129,7 @@ def to_html(rec: dict) -> str:
 <style>
   body {{ font-family: system-ui, -apple-system, Segoe UI, sans-serif; color: #1a1a19; background: #fff;
           max-width: 1000px; margin: 24px auto; padding: 0 16px; line-height: 1.45; }}
+  .logo svg {{ display: block; height: 34px; width: auto; max-width: 100%; margin-bottom: 18px; }}
   h1 {{ font-size: 1.5rem; margin-bottom: 4px; }}
   .meta {{ display: grid; grid-template-columns: max-content 1fr; gap: 2px 16px; margin: 12px 0 20px; }}
   .meta dt {{ color: #52514e; }} .meta dd {{ margin: 0; }}
@@ -138,6 +140,7 @@ def to_html(rec: dict) -> str:
   .readonly {{ color: #52514e; font-size: 0.85rem; margin-top: 24px; }}
   @media print {{ body {{ margin: 0; }} .noprint {{ display: none; }} }}
 </style></head><body>
+<div class="logo">{inline_svg('baton-logo.svg')}</div>
 <h1>Handover record</h1>
 <div class="muted">{e(rec['shift'])}</div>
 <dl class="meta">

@@ -12,17 +12,16 @@ from src.detect import parse_value
 
 GREY = "#8a8984"
 LINE_GREY = "#b9b8b2"
-AMBER = "#f5a623"
+AMBER = "#E8A33D"
 RED = "#d03b3b"
 RED_ZONE = "rgba(208, 59, 59, 0.10)"
 ORANGE = "#e8590c"
 NOTE = "#5b6b84"
-AMBER_BAND = "rgba(245, 166, 35, 0.22)"
+AMBER_BAND = "rgba(232, 163, 61, 0.22)"
 TWO_HOURS_MS = 2 * 3600 * 1000
-NO_TRANSITION = dict(duration=0)
 
 OTHER_ROW = "Other"
-ROW_HEIGHT = 40       # px per timeline row; the HTML labels beside the chart use the same numbers
+ROW_HEIGHT = 44       # px per timeline row (a full touch target); the HTML labels beside the chart use the same numbers
 TIMELINE_TOP = 26     # px above the first row: room for the handover label
 TIMELINE_BOTTOM = 30  # px below the last row: the time ticks
 NOTE_LIFT = 0.3       # notes sit this far above the row line, so they never cover an alert dot
@@ -31,7 +30,9 @@ BAND_HEIGHT = 0.8
 
 def _base_layout(fig: go.Figure, title: str, y_title: str, x_range: list, height: int,
                  legend_space: int = 90) -> go.Figure:
-    """Shared look. The legend sits at the bottom of the whole figure (not the plot), with its own
+    """Shared look. No layout.transition, here or on the timeline: Plotly has no animation without one, and with
+    one (even duration 0) it stops following the width Streamlit gives it, so a chart would never re-fit.
+    The legend sits at the bottom of the whole figure (not the plot), with its own
     reserved space, so it never covers the time axis title even when it wraps on a phone."""
     fig.update_layout(
         title=dict(text=title, x=0, xanchor="left", font=dict(size=14)),
@@ -40,7 +41,6 @@ def _base_layout(fig: go.Figure, title: str, y_title: str, x_range: list, height
         legend=dict(orientation="h", yref="container", y=0, yanchor="bottom", x=0, xanchor="left",
                     font=dict(size=11)),
         hovermode="closest",
-        transition=NO_TRANSITION,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
     )
@@ -196,7 +196,7 @@ def timeline(result) -> go.Figure:
 
     fig.update_layout(
         height=timeline_height(rows), margin=dict(l=20, r=24, t=TIMELINE_TOP, b=TIMELINE_BOTTOM, autoexpand=False),
-        showlegend=False, hovermode="closest", dragmode=False, barmode="overlay", transition=NO_TRANSITION,
+        showlegend=False, hovermode="closest", dragmode=False, barmode="overlay",
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
     )
     # tick0 = shift start, so the 2-hourly ticks land on 19:00, 21:00 ... 07:00 (not on even hours).

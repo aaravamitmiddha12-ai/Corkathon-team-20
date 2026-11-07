@@ -12,17 +12,54 @@ from ui.components import (EASE, chip, esc, key_line, limit_bar, progress_captio
 
 PLOTLY_CONFIG = {"displayModeBar": False, "responsive": True}
 
-# Plotly can't link a row to an anchor, so a click on the chart follows the HTML label at the same height.
-TIMELINE_CLICKS = """<script>
+# Plotly can't link a row to an anchor or highlight one without redrawing, so the chart borrows the HTML label
+# at the same height: a click follows it, and hover or keyboard focus on either side lights up the label and the
+# band behind that chart row. Every listener is on the document, once, and looks the rows up each time, so
+# Streamlit re-rendering or Plotly redrawing can't double them up or leave them on old elements.
+TIMELINE_SCRIPT = """<script>
 (function () {
-  if (window.batonTimelineClicks) return;
-  window.batonTimelineClicks = true;
-  document.addEventListener("click", function (e) {
-    if (!e.target.closest || !e.target.closest(".st-key-baton-timeline .js-plotly-plot")) return;
-    document.querySelectorAll("a.baton-tl-label").forEach(function (label) {
+  if (window.batonTimelineBound) return;
+  window.batonTimelineBound = true;
+  var root = ".st-key-baton-timeline ", hovered = -1;
+
+  function labels() { return Array.prototype.slice.call(document.querySelectorAll(root + ".baton-tl-label")); }
+
+  function rowAt(y) {
+    return labels().findIndex(function (label) {
       var box = label.getBoundingClientRect();
-      if (e.clientY >= box.top && e.clientY < box.bottom) label.click();
+      return y >= box.top && y < box.bottom;
     });
+  }
+
+  function paint() {
+    var rows = labels(), bands = document.querySelectorAll(root + ".baton-tl-band"), active = document.activeElement;
+    var focused = active && active.matches && active.matches("a.baton-tl-label:focus-visible") ? rows.indexOf(active) : -1;
+    rows.forEach(function (label, i) {
+      var hot = i === hovered || i === focused;
+      label.classList.toggle("baton-tl-hot", hot);
+      if (bands[i]) bands[i].classList.toggle("baton-tl-hot", hot);
+    });
+  }
+
+  function track(e) {
+    var row = -1, target = e.target;
+    if (e.pointerType !== "touch" && target && target.closest) {
+      var label = target.closest(root + ".baton-tl-label");
+      if (label) row = labels().indexOf(label);
+      else if (target.closest(root + ".js-plotly-plot")) row = rowAt(e.clientY);
+    }
+    if (row !== hovered || row !== -1) { hovered = row; paint(); }
+  }
+
+  document.addEventListener("pointermove", track, true);
+  document.addEventListener("pointerover", track, true);
+  document.documentElement.addEventListener("pointerleave", function () { hovered = -1; paint(); });
+  document.addEventListener("focusin", paint, true);
+  document.addEventListener("focusout", function () { setTimeout(paint); }, true);
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest || !e.target.closest(root + ".js-plotly-plot")) return;
+    var label = labels()[rowAt(e.clientY)];
+    if (label && label.matches("a")) label.click();
   });
 })();
 </script>"""
@@ -124,6 +161,13 @@ def timeline_labels(result) -> str:
     return f'<div style="padding-top:{TIMELINE_TOP}px">{"".join(labels)}</div>'
 
 
+def timeline_bands(result) -> str:
+    """An empty band behind each chart row, at the same heights as the labels, for the hover script to light up."""
+    bands = "".join(f'<i class="baton-tl-band" style="top:{TIMELINE_TOP + ROW_HEIGHT * n}px;height:{ROW_HEIGHT}px"></i>'
+                    for n in range(len(result.top) + 1))
+    return f'<div class="baton-tl-bands">{bands}</div>'
+
+
 def timeline_section(result) -> None:
     shift = result.shift
     show(f'<div class="baton-section">Shift at a glance · {shift.start:%a %H:%M} to {shift.handover:%a %H:%M}</div>')
@@ -132,12 +176,13 @@ def timeline_section(result) -> None:
         with labels:
             show(timeline_labels(result))
         with chart:
+            show(timeline_bands(result))
             st.plotly_chart(timeline(result), config=PLOTLY_CONFIG, key=f"timeline-{shift.id}")
     show('<div class="baton-legend"><span><i class="dot"></i>Alert</span>'
          '<span><i class="dot after"></i>Alert after a note said it was fine</span>'
          '<span><i class="note"></i>Note written</span>'
          '<span><i class="band"></i>Said fine, kept alerting</span></div>')
-    st.html(TIMELINE_CLICKS, unsafe_allow_javascript=True)
+    st.html(TIMELINE_SCRIPT, unsafe_allow_javascript=True)
 
 
 # ---------- pieces ----------
@@ -275,7 +320,9 @@ def html_table(headers: list[str], rows: list, plain_first: bool = False) -> str
     head = "".join(f"<th>{esc(h)}</th>" for h in headers)
     body = "".join("<tr>" + "".join(f"<td>{esc(c)}</td>" for c in row) + "</tr>" for row in rows)
     cls = "hc-ev plain" if plain_first else "hc-ev"
-    return f'<table class="{cls}"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>'
+    # The box scrolls sideways on its own when the columns need more room than the card has.
+    return (f'<div class="baton-table-box"><table class="{cls}" style="min-width:{len(headers) * 6.5}rem">'
+            f'<thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>')
 
 
 def evidence_table(rows: list[tuple[str, str, str]]) -> str:
@@ -360,9 +407,23 @@ def is_collapsed(result, item) -> bool:
     return st.session_state.get("open_form") not in ((shift_id, asset, "draft"), (shift_id, asset, "dismiss"))
 
 
+def row_state_rules(result) -> list[str]:
+    """The timeline is outside the fragment, so a response can't re-render it. These rules reach its labels by
+    href instead, and are rebuilt on every render: a tick for an item with a response, plus muted while its card
+    is collapsed to a slim row. The looks are in the CSS block; these only switch them on."""
+    rules = []
+    for item in result.top:
+        if item.asset_id in result.responses:
+            muted = " --baton-row-fade: 0.7; --baton-row-weight: 400;" if is_collapsed(result, item) else ""
+            rules.append(f'a.baton-tl-label[href="#card-{slug(item.asset_id)}"] '
+                         f'{{ --baton-tick: "✓"; --baton-rank-size: 0; --baton-rank-fade: 1;{muted} }}')
+    return rules
+
+
 def motion_css(result, just_changed: str | None, intro: bool, ready: bool) -> str:
-    """Animations that must run once. Streamlit cards can't take a class, but they have a key, so these
-    rules exist for a single render. Removing them later doesn't replay anything."""
+    """Rules that depend on this render. Animations that must run once: Streamlit cards can't take a class, but
+    they have a key, so these exist for a single render, and removing them later doesn't replay anything.
+    Then the live state of the timeline labels."""
     rules = []
     if intro:
         for n, item in enumerate(result.top, start=1):
@@ -370,6 +431,7 @@ def motion_css(result, just_changed: str | None, intro: bool, ready: bool) -> st
                          f"{{ animation: baton-in 240ms {EASE} both; animation-delay: {n * 50}ms; }}")
     if ready and just_changed:
         rules.append(f".st-key-baton-signoff {{ animation: baton-in 240ms {EASE} both; }}")
+    rules += row_state_rules(result)
     return f"<style>{' '.join(rules)}</style>"
 
 
@@ -419,7 +481,8 @@ def render(result, refresh) -> None:
 
     timeline_section(result)
 
-    left, right = st.columns([2, 3], gap="large")
+    with st.container(key="baton-main"):
+        left, right = st.columns([2, 3], gap="large")
     with left:
         notes_column(result)
     with right:
