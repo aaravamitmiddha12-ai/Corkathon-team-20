@@ -183,8 +183,8 @@ behaves the same on any day. Responses and sign-offs record the real time.
 **5/5 of the expert's items, 3/5 in the same position, rank agreement (Spearman) 0.90.**
 The one swap: the formula ranks the chiller (getting worse, no owner) above the HPLC (already
 ticketed, vendor booked). The expert ranked the HPLC higher because it blocks a batch release.
-We did not tune the weights to force the order. The Sat 19:00 shift has no expert answer key,
-so the badge is hidden there.
+We did not tune the weights to force the order. The Sat 19:00 shift has no expert answer key.
+The score is printed by `python -m src.pipeline`; the app itself doesn't show it.
 
 ### LLM guard rails
 

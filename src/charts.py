@@ -17,7 +17,16 @@ RED = "#d03b3b"
 RED_ZONE = "rgba(208, 59, 59, 0.10)"
 ORANGE = "#e8590c"
 NOTE = "#5b6b84"
+AMBER_BAND = "rgba(245, 166, 35, 0.22)"
 TWO_HOURS_MS = 2 * 3600 * 1000
+NO_TRANSITION = dict(duration=0)
+
+OTHER_ROW = "Other"
+ROW_HEIGHT = 40       # px per timeline row; the HTML labels beside the chart use the same numbers
+TIMELINE_TOP = 26     # px above the first row: room for the handover label
+TIMELINE_BOTTOM = 30  # px below the last row: the time ticks
+NOTE_LIFT = 0.3       # notes sit this far above the row line, so they never cover an alert dot
+BAND_HEIGHT = 0.8
 
 
 def _base_layout(fig: go.Figure, title: str, y_title: str, x_range: list, height: int,
@@ -31,6 +40,7 @@ def _base_layout(fig: go.Figure, title: str, y_title: str, x_range: list, height
         legend=dict(orientation="h", yref="container", y=0, yanchor="bottom", x=0, xanchor="left",
                     font=dict(size=11)),
         hovermode="closest",
+        transition=NO_TRANSITION,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
     )
@@ -125,44 +135,80 @@ def reading_chart(finding, shift) -> go.Figure | None:
 
 
 def timeline(result) -> go.Figure:
-    """Home page: one row per top-5 asset plus "Other", across the outgoing shift."""
+    """Home page: one row per top asset (in rank order) plus "Other", up to the handover.
+
+    The row labels are HTML links beside the chart (ui/home.py), so this chart has no y labels,
+    and it uses fixed pixel heights so those labels line up with the rows.
+    """
     shift = result.shift
     top_ids = [i.asset_id for i in result.top]
-    rows = top_ids + ["Other"]
+    rows = top_ids + [OTHER_ROW]
+    y_of = {row: n for n, row in enumerate(rows)}
 
     def row_of(asset) -> str:
-        return asset if asset in top_ids else "Other"
+        return asset if asset in y_of else OTHER_ROW
 
     alerts = result.pack.alerts.copy()
-    alerts["row"] = alerts["asset"].map(row_of)
+    alerts["y"] = [y_of[row_of(a)] for a in alerts["asset"]]
     alerts["after_ok"] = [
         t in result.findings[a].clash_alert_times if a in result.findings else False
         for a, t in zip(alerts["asset"], alerts["time"])
     ]
     notes = result.notes.copy()
-    notes["row"] = [row_of(a) if isinstance(a, str) else "Other" for a in notes["asset_id"]]
+    notes["y"] = [y_of[row_of(a)] - NOTE_LIFT for a in notes["asset_id"]]
 
     fig = go.Figure()
+
+    # Bands first, so they sit behind the markers.
+    for f in result.findings.values():
+        if not f.clash:
+            continue
+        said_fine = f.notes[f.notes["time"].isin(f.clash_note_times)]["timestamp"].dropna()
+        kept_alerting = f.alerts[f.alerts["time"].isin(f.clash_alert_times)]["timestamp"].dropna()
+        if len(said_fine) and len(kept_alerting):
+            start, end = said_fine.min(), kept_alerting.max()
+            fig.add_trace(go.Bar(
+                y=[y_of[row_of(f.asset_id)]], x=[(end - start).total_seconds() * 1000], base=[start],
+                orientation="h", width=BAND_HEIGHT, marker=dict(color=AMBER_BAND, cornerradius=6, line=dict(width=0)),
+                hoverinfo="skip", name="Said fine, kept alerting"))
+
     hover = "%{x|%H:%M:%S} · %{customdata[0]} · %{customdata[1]}<br>%{customdata[2]}<extra></extra>"
     for mask, colour, name in [(~alerts["after_ok"], GREY, "Alert"),
                                (alerts["after_ok"], AMBER, "Alert after a note said it was fine")]:
         part = alerts[mask]
         if len(part):
             fig.add_trace(go.Scatter(
-                x=part["timestamp"], y=part["row"], mode="markers", name=name,
-                marker=dict(color=colour, size=11, line=dict(color="white", width=1.5)),
+                x=part["timestamp"], y=part["y"], mode="markers", name=name, cliponaxis=False,
+                marker=dict(color=colour, size=10, line=dict(color="white", width=1)),
                 customdata=part[["asset", "severity", "message"]].values, hovertemplate=hover))
     if len(notes):
         fig.add_trace(go.Scatter(
-            x=notes["timestamp"], y=notes["row"], mode="markers", name="Shift note",
-            marker=dict(symbol="line-ns-open", size=18, color=NOTE, line=dict(width=2, color=NOTE)),
+            x=notes["timestamp"], y=notes["y"], mode="markers", name="Note written", cliponaxis=False,
+            marker=dict(symbol="diamond", size=8, color=NOTE),
             customdata=[[t, _hover_safe(x if len(x) <= 90 else x[:87] + "...")] for t, x in
                         zip(notes["time"], notes["text"])],
             hovertemplate="%{customdata[0]} note<br>%{customdata[1]}<extra></extra>"))
 
-    fig.update_yaxes(categoryorder="array", categoryarray=list(reversed(rows)), title_text="Asset")
-    return _base_layout(fig, f"Shift at a glance · {shift.start:%a %H:%M} to {shift.handover:%a %H:%M}",
-                        "Asset", [shift.start, shift.handover], height=90 + 38 * len(rows), legend_space=70)
+    fig.add_shape(type="line", x0=shift.handover, x1=shift.handover, y0=0, y1=1, yref="paper",
+                  line=dict(color=NOTE, dash="dash", width=1.5))
+    fig.add_annotation(x=shift.handover, y=1, yref="paper", yanchor="bottom", xanchor="right", showarrow=False,
+                       text=f"Handover {shift.handover:%H:%M}", font=dict(size=11))
+
+    fig.update_layout(
+        height=timeline_height(rows), margin=dict(l=20, r=24, t=TIMELINE_TOP, b=TIMELINE_BOTTOM, autoexpand=False),
+        showlegend=False, hovermode="closest", dragmode=False, barmode="overlay", transition=NO_TRANSITION,
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+    )
+    # tick0 = shift start, so the 2-hourly ticks land on 19:00, 21:00 ... 07:00 (not on even hours).
+    fig.update_xaxes(type="date", tickformat="%H:%M", range=[shift.start, shift.handover], dtick=TWO_HOURS_MS,
+                     tick0=shift.start, showgrid=False, zeroline=False, fixedrange=True)
+    fig.update_yaxes(range=[len(rows) - 0.5, -0.5], tickvals=list(range(len(rows))), showticklabels=False,
+                     gridcolor="rgba(128,128,128,0.25)", zeroline=False, fixedrange=True)
+    return fig
+
+
+def timeline_height(rows: list) -> int:
+    return TIMELINE_TOP + ROW_HEIGHT * len(rows) + TIMELINE_BOTTOM
 
 
 def _hover_safe(text: str) -> str:

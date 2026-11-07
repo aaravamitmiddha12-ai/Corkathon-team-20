@@ -152,5 +152,5 @@ def to_html(rec: dict) -> str:
 <ul>{carried or '<li>None</li>'}</ul>
 <h2>Checked, not urgent</h2>
 <ul>{rest or '<li>None</li>'}</ul>
-<p class="readonly">Read-only record produced by Handover Check. Print with your browser (Ctrl+P / Cmd+P).</p>
+<p class="readonly">Read-only record produced by Baton. Print with your browser (Ctrl+P / Cmd+P).</p>
 </body></html>"""

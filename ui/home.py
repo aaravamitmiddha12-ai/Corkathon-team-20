@@ -4,12 +4,28 @@ import pandas as pd
 import streamlit as st
 
 from src import record, respond, review, state
-from src.charts import reading_chart, timeline
+from src.charts import OTHER_ROW, ROW_HEIGHT, TIMELINE_TOP, reading_chart, timeline
 from src.due import due_label
 from src.explain import evidence_rows
-from ui.components import chip, esc, key_line, reason_chips, show
+from ui.components import (EASE, chip, esc, key_line, limit_bar, progress_caption, progress_segments, reason_chips,
+                           short_name, show, slug)
 
 PLOTLY_CONFIG = {"displayModeBar": False, "responsive": True}
+
+# Plotly can't link a row to an anchor, so a click on the chart follows the HTML label at the same height.
+TIMELINE_CLICKS = """<script>
+(function () {
+  if (window.batonTimelineClicks) return;
+  window.batonTimelineClicks = true;
+  document.addEventListener("click", function (e) {
+    if (!e.target.closest || !e.target.closest(".st-key-baton-timeline .js-plotly-plot")) return;
+    document.querySelectorAll("a.baton-tl-label").forEach(function (label) {
+      var box = label.getBoundingClientRect();
+      if (e.clientY >= box.top && e.clientY < box.bottom) label.click();
+    });
+  });
+})();
+</script>"""
 
 
 # ---------- callbacks (run before the next rerun) ----------
@@ -29,28 +45,99 @@ def _changed() -> None:
     st.session_state["state_version"] = st.session_state.get("state_version", 0) + 1
 
 
+def _reopened() -> set:
+    """Handled cards the viewer has opened again. Only for this browser session; nothing is saved."""
+    return st.session_state.setdefault("reopened", set())
+
+
+def _responded(shift_id: str, asset: str) -> None:
+    _reopened().discard((shift_id, asset))
+    st.session_state["just_changed"] = asset  # this item alone animates on the next render
+    _changed()
+
+
 def on_got_it(shift_id: str, asset: str) -> None:
     if _need_name(shift_id):
         return
     respond.got_it(shift_id, asset, _name(shift_id))
     st.session_state.pop("open_form", None)
-    _changed()
+    _responded(shift_id, asset)
 
 
 def on_draft(shift_id: str, asset: str) -> None:
     if st.session_state.get("open_form") == (shift_id, asset, "draft"):
         st.session_state["open_form"] = None  # just closing the draft: record nothing
+        st.session_state["just_changed"] = asset  # the card can collapse now
         return
     if _need_name(shift_id):
         return
     st.session_state["open_form"] = (shift_id, asset, "draft")
     if respond.ticket_drafted(shift_id, asset, _name(shift_id)):  # never overwrites a saved response
+        st.session_state["just_changed"] = asset
         _changed()
 
 
 def on_dismiss_open(shift_id: str, asset: str) -> None:
     current = st.session_state.get("open_form")
     st.session_state["open_form"] = None if current == (shift_id, asset, "dismiss") else (shift_id, asset, "dismiss")
+
+
+def on_dismiss_save(result, item) -> None:
+    shift_id, asset = result.shift.id, item.asset_id
+    if _need_name(shift_id):
+        return
+    try:
+        respond.dismiss(shift_id, result.shift.handover, item.finding, _name(shift_id),
+                        st.session_state[f"reason-{shift_id}-{asset}"],
+                        reference=st.session_state[f"ref-{shift_id}-{asset}"],
+                        note=st.session_state[f"note-{shift_id}-{asset}"],
+                        expiry=st.session_state[f"expiry-{shift_id}-{asset}"])
+    except ValueError as e:
+        st.session_state["dismiss_error"] = (shift_id, asset, str(e).capitalize() + ".")
+        return
+    st.session_state["open_form"] = None
+    _responded(shift_id, asset)
+
+
+def on_reopen(shift_id: str, asset: str) -> None:
+    _reopened().add((shift_id, asset))
+
+
+def on_collapse(shift_id: str, asset: str) -> None:
+    _reopened().discard((shift_id, asset))
+    st.session_state["open_form"] = None
+
+
+# ---------- timeline ----------
+
+def timeline_labels(result) -> str:
+    """The row labels, as real links to each card. Same height per row as the chart beside them."""
+    style = f'style="height:{ROW_HEIGHT}px"'
+    labels = []
+    for n, item in enumerate(result.top, start=1):
+        labels.append(f'<a class="baton-tl-label" href="#card-{slug(item.asset_id)}" target="_self" {style}>'
+                      f'<span class="baton-tl-rank">{n}</span><span class="baton-tl-id">{esc(item.asset_id)}</span>'
+                      f'<span class="baton-tl-name">{esc(short_name(item.finding.asset_type))}</span></a>')
+    top_ids = {i.asset_id for i in result.top}
+    others = (set(result.pack.alerts["asset"]) | {a for a in result.notes["asset_id"] if isinstance(a, str)}) - top_ids
+    labels.append(f'<div class="baton-tl-label" {style}><span class="baton-tl-id">{OTHER_ROW} ({len(others)})</span></div>')
+    return f'<div style="padding-top:{TIMELINE_TOP}px">{"".join(labels)}</div>'
+
+
+def timeline_section(result) -> None:
+    shift = result.shift
+    show(f'<div class="baton-section">Shift at a glance · {shift.start:%a %H:%M} to {shift.handover:%a %H:%M}</div>')
+    with st.container(key="baton-timeline"):
+        labels, chart = st.columns([1, 3], gap=None)
+        with labels:
+            show(timeline_labels(result))
+        with chart:
+            st.plotly_chart(timeline(result), config=PLOTLY_CONFIG, key=f"timeline-{shift.id}")
+    show('<div class="baton-legend"><span><i class="dot"></i>Alert</span>'
+         '<span><i class="dot after"></i>Alert after a note said it was fine</span>'
+         '<span><i class="note"></i>Note written</span>'
+         '<span><i class="band"></i>Said fine, kept alerting</span></div>')
+    st.html(TIMELINE_CLICKS, unsafe_allow_javascript=True)
 
 
 # ---------- pieces ----------
@@ -94,24 +181,37 @@ def outgoing_box(rv: dict | None) -> str:
 def dismiss_form(result, item) -> None:
     shift_id, asset = result.shift.id, item.asset_id
     with st.form(key=f"dismiss-form-{shift_id}-{asset}"):
-        reason = st.selectbox("Reason", respond.DISMISS_REASONS, key=f"reason-{shift_id}-{asset}")
-        reference = st.text_input("Reference (optional)", placeholder="e.g. WO-1195", key=f"ref-{shift_id}-{asset}")
-        note = st.text_input("Note", key=f"note-{shift_id}-{asset}")
-        expiry = st.radio("Expires", list(respond.EXPIRY_OPTIONS), format_func=respond.EXPIRY_OPTIONS.get,
-                          index=1, horizontal=True, key=f"expiry-{shift_id}-{asset}")
-        saved = st.form_submit_button("Save dismissal", type="primary")
-    if saved:
-        if _need_name(shift_id):
-            st.rerun()
-        try:
-            respond.dismiss(shift_id, result.shift.handover, item.finding, _name(shift_id), reason,
-                            reference=reference, note=note, expiry=expiry)
-        except ValueError as e:
-            st.error(str(e).capitalize() + ".")
-            return
-        st.session_state["open_form"] = None
-        _changed()
-        st.rerun()
+        st.selectbox("Reason", respond.DISMISS_REASONS, key=f"reason-{shift_id}-{asset}")
+        st.text_input("Reference (optional)", placeholder="e.g. WO-1195", key=f"ref-{shift_id}-{asset}")
+        st.text_input("Note", key=f"note-{shift_id}-{asset}")
+        st.radio("Expires", list(respond.EXPIRY_OPTIONS), format_func=respond.EXPIRY_OPTIONS.get,
+                 index=1, horizontal=True, key=f"expiry-{shift_id}-{asset}")
+        st.form_submit_button("Save dismissal", type="primary", on_click=on_dismiss_save, args=(result, item))
+    error = st.session_state.get("dismiss_error")
+    if error and error[:2] == (shift_id, asset):
+        st.error(error[2])
+        del st.session_state["dismiss_error"]
+
+
+def slim_text(r: dict) -> str:
+    """What a handled item's one-line row says it got."""
+    if r["kind"] == "dismissed":
+        ref = f" ({r['reference']})" if r.get("reference") else ""
+        return f"Dismissed: {r.get('reason', '')}{ref}"
+    return respond.RESPONSE_LABELS[r["kind"]]
+
+
+def slim_row(result, item, r: dict, just_changed: str | None) -> None:
+    """A handled item: one line. "Open" brings back its evidence and the way to change the response."""
+    shift_id, asset = result.shift.id, item.asset_id
+    animate = " baton-done" if asset == just_changed else ""
+    with st.container(border=True, key=f"baton-card-{shift_id}-{slug(asset)}"):
+        text, action = st.columns([6, 1], vertical_alignment="center")
+        with text:
+            show(f'<div id="card-{slug(asset)}" class="baton-slim{animate}"><span class="tick">✓</span> '
+                 f'<b>{esc(asset)}</b> · {esc(slim_text(r))} · {esc(state.short_time(r.get("at", "")))}</div>')
+        action.button("Open", key=f"open-{shift_id}-{asset}", on_click=on_reopen, args=(shift_id, asset),
+                      type="tertiary", width="stretch")
 
 
 def card(result, n: int, item, locked: bool) -> None:
@@ -120,14 +220,15 @@ def card(result, n: int, item, locked: bool) -> None:
     r = result.responses.get(item.asset_id)
     due_text, overdue = due_label(f.due_by, shift.handover)
 
-    with st.container(border=True):
+    with st.container(border=True, key=f"baton-card-{shift.id}-{slug(item.asset_id)}"):
         due_html = f'<span class="hc-due{" overdue" if overdue else ""}">{esc(due_text)}</span>' if due_text else ""
-        show(f'<div class="hc-toprow"><div>{reason_chips(item)}</div>{due_html}</div>')
+        show(f'<div id="card-{slug(item.asset_id)}" class="hc-toprow"><div>{reason_chips(item)}</div>{due_html}</div>')
         show(f'<div class="hc-card-head"><span class="hc-num">{n}</span>'
              f'<span class="hc-headline">{esc(ex["headline"])}</span></div>')
         if item.dismissal_status == "now_worse":
             show(f'<div class="hc-worse"><b>Dismissed earlier, now worse.</b> '
                  f'{esc(respond.dismissal_line(item.dismissal))} · {esc(item.dismissal_detail)}</div>')
+        show(limit_bar(f))
         show(f'<div class="hc-action">{esc(ex["action"])}</div>')
         show('<ul class="hc-bullets">' + "".join(f"<li>{esc(b)}</li>" for b in ex["bullets"]) + "</ul>")
         show(outgoing_box(item.review))
@@ -163,6 +264,10 @@ def card(result, n: int, item, locked: bool) -> None:
                                         shift.label, _name(shift.id))
             st.caption("Copy this into your ticketing system:")
             st.code(text, language=None)
+
+        if (shift.id, item.asset_id) in _reopened():
+            st.button("Collapse", key=f"collapse-{shift.id}-{item.asset_id}", on_click=on_collapse,
+                      args=(shift.id, item.asset_id), type="tertiary")
 
 
 def html_table(headers: list[str], rows: list, plain_first: bool = False) -> str:
@@ -236,13 +341,9 @@ def sign_off_section(result, signed: dict | None) -> None:
             st.caption("Checked, not urgent: " + ", ".join(i["asset"] for i in signed["not_urgent"]))
         return
 
-    ready = respond.all_responded(result.top, result.responses)
     # No widget key: the default follows the Incoming engineer field until someone types here.
     signer = st.text_input("Signed off by (your name)", value=_name(shift.id))
-    if not ready:
-        st.caption(f"Respond to every item first ({result.responded_count} of {len(result.top)} done).")
-    if st.button("Sign off handover", key=f"signoff-{shift.id}", type="primary",
-                 disabled=not ready or not signer.strip()):
+    if st.button("Sign off handover", key=f"signoff-{shift.id}", type="primary", disabled=not signer.strip()):
         try:
             record.sign_off(result, signer, incoming=_name(shift.id))
         except ValueError as e:  # e.g. someone else signed off a moment ago
@@ -251,37 +352,76 @@ def sign_off_section(result, signed: dict | None) -> None:
         st.rerun()
 
 
-def render(result) -> None:
-    shift = result.shift
-    ev = result.evaluation
-    signed = record.latest(shift.id)
+def is_collapsed(result, item) -> bool:
+    shift_id, asset = result.shift.id, item.asset_id
+    if asset not in result.responses or (shift_id, asset) in _reopened():
+        return False
+    # A drafted ticket has to stay on screen until it has been copied.
+    return st.session_state.get("open_form") not in ((shift_id, asset, "draft"), (shift_id, asset, "dismiss"))
 
-    badge = ""
-    if ev:
-        tip = f"{ev['same_position']}/{ev['out_of']} in the same position"
-        badge = f'<span class="hc-badge" title="{esc(tip)}">Matches expert ranking: {ev["matches"]}/{ev["out_of"]}</span>'
-    show(f'<div class="hc-header"><h1>Handover Check: {esc(shift.title)}</h1>{badge}</div>')
-    show(f'<div class="hc-sub">Outgoing: {esc(result.pack.outgoing_engineer)} · shift {shift.start:%a %H:%M} '
-         f'to {shift.handover:%a %H:%M}. Plain rules rank the items; you confirm each one.</div>')
+
+def motion_css(result, just_changed: str | None, intro: bool, ready: bool) -> str:
+    """Animations that must run once. Streamlit cards can't take a class, but they have a key, so these
+    rules exist for a single render. Removing them later doesn't replay anything."""
+    rules = []
+    if intro:
+        for n, item in enumerate(result.top, start=1):
+            rules.append(f".st-key-baton-card-{result.shift.id}-{slug(item.asset_id)} "
+                         f"{{ animation: baton-in 240ms {EASE} both; animation-delay: {n * 50}ms; }}")
+    if ready and just_changed:
+        rules.append(f".st-key-baton-signoff {{ animation: baton-in 240ms {EASE} both; }}")
+    return f"<style>{' '.join(rules)}</style>"
+
+
+@st.fragment
+def responses_section(refresh) -> None:
+    """The progress bar, the cards and sign-off. Responding to an item re-runs only this."""
+    result = refresh()
+    shift = result.shift
+    signed = record.latest(shift.id)
+    just_changed = st.session_state.get("just_changed")
+    intro = not st.session_state.get("intro_done")
+    ready = respond.all_responded(result.top, result.responses)
+
+    show(motion_css(result, just_changed, intro, ready))
+    if message := st.session_state.pop("flash", None):
+        st.info(message)
+    show(progress_segments(result.top, result.responses, just_changed, enter=intro))
+    show(f'<div class="baton-progress-caption">{esc(progress_caption(result.top, result.responses))}</div>')
+    show(key_line())
+
+    for n, item in enumerate(result.top, start=1):
+        if is_collapsed(result, item):
+            slim_row(result, item, result.responses[item.asset_id], just_changed)
+        else:
+            card(result, n, item, locked=bool(signed))
+
+    if signed or ready:
+        with st.container(key="baton-signoff"):
+            sign_off_section(result, signed)
+    lists_below(result)
+
+    st.session_state["intro_done"] = True
+    st.session_state["just_changed"] = None
+
+
+def render(result, refresh) -> None:
+    shift = result.shift
+
+    show(f'<div class="hc-header"><h1>Baton · {esc(shift.title)}</h1></div>')
+    show(f'<div class="hc-sub">From {esc(result.pack.outgoing_engineer)} · {esc(shift.id)} shift</div>')
 
     if result.review_items and not result.review_complete:
         show('<div class="hc-banner"><b>Outgoing review not completed.</b> '
              'The outgoing engineer hasn\'t said yet whether the flagged items are real issues.</div>')
-    if message := st.session_state.pop("flash", None):
-        st.info(message)
     for warning in result.warnings:
         st.info(warning)
 
-    st.plotly_chart(timeline(result), config=PLOTLY_CONFIG, key=f"timeline-{shift.id}")
+    timeline_section(result)
 
     left, right = st.columns([2, 3], gap="large")
     with left:
         notes_column(result)
     with right:
         st.subheader("Needs you first")
-        show(f'<div class="hc-progress">{result.responded_count} of {len(result.top)} responded</div>')
-        show(key_line())
-        for n, item in enumerate(result.top, start=1):
-            card(result, n, item, locked=bool(signed))
-        lists_below(result)
-        sign_off_section(result, signed)
+        responses_section(refresh)

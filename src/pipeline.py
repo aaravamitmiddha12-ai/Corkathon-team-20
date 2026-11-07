@@ -103,7 +103,7 @@ def run(mode: str = "demo", shift: str = DEFAULT_SHIFT) -> Result:
 if __name__ == "__main__":
     shift = sys.argv[sys.argv.index("--shift") + 1] if "--shift" in sys.argv else DEFAULT_SHIFT
     result = run(mode="llm" if "--llm" in sys.argv else "demo", shift=shift)
-    print(f"Handover Check: {result.shift.title}")
+    print(f"Baton: {result.shift.title}")
     for w in result.warnings:
         print("WARNING:", w)
     for n, item in enumerate(result.top, start=1):

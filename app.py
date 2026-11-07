@@ -1,4 +1,4 @@
-"""Handover Check.
+"""Baton.
 
     streamlit run app.py
 
@@ -15,7 +15,7 @@ from src.pipeline import run
 from ui import before_you_go, home
 from ui.components import CSS, show
 
-st.set_page_config(page_title="Handover Check", page_icon="🔁", layout="wide")
+st.set_page_config(page_title="Baton", layout="wide")
 show(CSS)
 
 st.session_state.setdefault("page", "home")
@@ -62,9 +62,10 @@ with top[2]:
         st.button("Outgoing engineer? Before you go →", key="open-before-you-go",
                   on_click=lambda: st.session_state.update(page="before"), width="stretch")
 
-result = get_result("llm" if use_llm else "demo", shift_id)
+mode = "llm" if use_llm else "demo"
+result = get_result(mode, shift_id)
 
 if st.session_state["page"] == "before":
     before_you_go.render(result, on_saved=state_changed)
 else:
-    home.render(result)
+    home.render(result, refresh=lambda: get_result(mode, shift_id))

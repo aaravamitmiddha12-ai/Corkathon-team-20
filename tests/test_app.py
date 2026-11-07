@@ -26,22 +26,27 @@ def page_html(at: AppTest) -> str:
     return " ".join(m.value for m in at.markdown)
 
 
-def test_sign_off_disabled_until_every_item_has_a_response():
+def button_keys(at: AppTest) -> set:
+    return {b.key for b in at.button}
+
+
+def test_sign_off_appears_only_when_every_item_has_a_response():
     at = start()
-    assert at.button(key="signoff-night").disabled
-    assert "0 of 5 responded" in page_html(at)
+    assert "signoff-night" not in button_keys(at)
+    assert "0 of 5 handled" in page_html(at)
     for asset in TOP_NIGHT[:4]:
         at.button(key=f"got-night-{asset}").click().run()
-        assert at.button(key="signoff-night").disabled
+        assert "signoff-night" not in button_keys(at)
     at.button(key="got-night-BAL-03").click().run()
-    assert "5 of 5 responded" in page_html(at)
+    assert "5 of 5 handled · 5 got it" in page_html(at)
     assert not at.button(key="signoff-night").disabled
 
     at.button(key="signoff-night").click().run()
     assert not at.exception, at.exception
     html = page_html(at)
     assert "Signed off by" in html and "read-only" in html
-    assert at.button(key="got-night-FRZ-12").disabled      # locked after sign-off
+    at.button(key="open-night-FRZ-12").click().run()       # still readable after sign-off...
+    assert at.button(key="got-night-FRZ-12").disabled      # ...but locked
 
 
 def test_card_shows_dismissed_earlier_now_worse():
@@ -100,7 +105,7 @@ def test_before_you_go_saves_and_clears_the_banner():
 def test_both_handovers_render_all_sections(shift):
     at = start(shift)
     subheaders = [s.value for s in at.subheader]
-    assert {"What the notes say", "Needs you first", "Handover record"} <= set(subheaders)
+    assert {"What the notes say", "Needs you first"} <= set(subheaders)
     assert any(e.label.startswith("Checked, not urgent") for e in at.expander)
     assert "Key:" in page_html(at)
 
@@ -134,3 +139,55 @@ def test_typed_incoming_name_survives_switching_shifts():
     assert at.text_input(key="incoming_night").value == "Jane Doe"
     at.button(key="got-night-FRZ-12").click().run()
     assert respond.load_responses("night")["FRZ-12"]["name"] == "Jane Doe"
+
+
+def transient_style(at: AppTest) -> str:
+    """The one-render animation rules (not the permanent style block)."""
+    return next(m.value for m in at.markdown if m.value.startswith("<style>") and "scroll-behavior" not in m.value)
+
+
+def test_header_shows_the_name_and_no_expert_badge():
+    html = page_html(start())
+    assert "Baton · Sat 7 Nov, 07:00 handover" in html
+    assert "From D. Murphy · night shift" in html
+    assert "expert ranking" not in html
+
+
+def test_handled_item_collapses_to_one_line_and_can_be_reopened():
+    at = start()
+    at.button(key="got-night-HPLC-07").click().run()
+    assert "got-night-HPLC-07" not in button_keys(at)
+    slim = [m.value for m in at.markdown if 'class="baton-slim' in m.value]
+    assert len(slim) == 1 and "HPLC-07" in slim[0] and "Got it" in slim[0]
+    at.button(key="open-night-HPLC-07").click().run()
+    assert "got-night-HPLC-07" in button_keys(at)
+    at.button(key="collapse-night-HPLC-07").click().run()
+    assert "got-night-HPLC-07" not in button_keys(at)
+
+
+def test_drafted_ticket_stays_open_until_it_is_closed():
+    at = start()
+    at.button(key="draft-night-CH-2-P3").click().run()
+    assert any("DRAFT TICKET" in c.value for c in at.code)   # handled, but still on screen to copy
+    at.button(key="draft-night-CH-2-P3").click().run()
+    assert not any("DRAFT TICKET" in c.value for c in at.code)
+    assert "1 of 5 handled · 1 ticket drafted" in page_html(at)
+    assert "open-night-CH-2-P3" in button_keys(at)
+
+
+def test_entrance_runs_once_and_only_the_item_just_responded_to_animates():
+    at = start()
+    assert "baton-in" in transient_style(at)                 # entrance on the first render...
+    at.button(key="got-night-FRZ-12").click().run()
+    assert "baton-in" not in transient_style(at)             # ...never again
+    at.button(key="got-night-WFI-LOOP-1").click().run()
+    html = " ".join(m.value for m in at.markdown if "scroll-behavior" not in m.value)
+    assert html.count("baton-seg-new") == 1 and html.count("baton-slim baton-done") == 1
+    assert 'class="baton-slim baton-done"><span class="tick">✓</span> <b>WFI-LOOP-1' in html.replace('id="card-WFI-LOOP-1" ', "")
+
+
+def test_every_anchor_target_exists():
+    html = page_html(start())
+    for asset in TOP_NIGHT:
+        assert f'href="#card-{asset}"' in html and f'id="card-{asset}"' in html
+    assert "Other (" in html
