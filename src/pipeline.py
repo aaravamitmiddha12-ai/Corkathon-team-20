@@ -72,10 +72,19 @@ def run(mode: str = "demo", shift: str = DEFAULT_SHIFT) -> Result:
     saved = respond.load_dismissals()
     dismissals = {}
     for asset, f in findings.items():
-        status, detail = respond.dismissal_status(saved.get(asset), f, pack.shift.id,
-                                                  pack.shift.handover, pack.tickets)
+        d = saved.get(asset)
+        status, detail = respond.dismissal_status(d, f, pack.shift.id, pack.shift.handover, pack.tickets)
+        if status == "here" and d.get("previous"):
+            # Dismissed again at this handover: keep showing that the earlier dismissal was outgrown.
+            before, why = respond.dismissal_status(d["previous"], f, pack.shift.id, pack.shift.handover,
+                                                   pack.tickets)
+            if before == "now_worse":
+                d, status, detail = d["previous"], before, why
+        if status == "active" and reviews.get(asset, {}).get("choice") == "real_issue":
+            # The outgoing engineer saw it during the shift and says it's real: that outranks the dismissal.
+            status, detail = "now_worse", "the outgoing engineer says it's a real issue"
         if status:
-            dismissals[asset] = (saved[asset], status, detail)
+            dismissals[asset] = (d, status, detail)
 
     top, rest = rank(findings, reviews, dismissals)
     explanations, explain_warnings = explain_all(top, mode=mode)

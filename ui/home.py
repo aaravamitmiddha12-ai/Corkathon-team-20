@@ -38,12 +38,14 @@ def on_got_it(shift_id: str, asset: str) -> None:
 
 
 def on_draft(shift_id: str, asset: str) -> None:
+    if st.session_state.get("open_form") == (shift_id, asset, "draft"):
+        st.session_state["open_form"] = None  # just closing the draft: record nothing
+        return
     if _need_name(shift_id):
         return
-    respond.ticket_drafted(shift_id, asset, _name(shift_id))
-    current = st.session_state.get("open_form")
-    st.session_state["open_form"] = None if current == (shift_id, asset, "draft") else (shift_id, asset, "draft")
-    _changed()
+    st.session_state["open_form"] = (shift_id, asset, "draft")
+    if respond.ticket_drafted(shift_id, asset, _name(shift_id)):  # never overwrites a saved response
+        _changed()
 
 
 def on_dismiss_open(shift_id: str, asset: str) -> None:
@@ -101,8 +103,12 @@ def dismiss_form(result, item) -> None:
     if saved:
         if _need_name(shift_id):
             st.rerun()
-        respond.dismiss(shift_id, result.shift.handover, item.finding, _name(shift_id), reason,
-                        reference=reference, note=note, expiry=expiry)
+        try:
+            respond.dismiss(shift_id, result.shift.handover, item.finding, _name(shift_id), reason,
+                            reference=reference, note=note, expiry=expiry)
+        except ValueError as e:
+            st.error(str(e).capitalize() + ".")
+            return
         st.session_state["open_form"] = None
         _changed()
         st.rerun()
@@ -159,11 +165,16 @@ def card(result, n: int, item, locked: bool) -> None:
             st.code(text, language=None)
 
 
+def html_table(headers: list[str], rows: list, plain_first: bool = False) -> str:
+    """A small table that wraps long text (st.dataframe would cut it off)."""
+    head = "".join(f"<th>{esc(h)}</th>" for h in headers)
+    body = "".join("<tr>" + "".join(f"<td>{esc(c)}</td>" for c in row) + "</tr>" for row in rows)
+    cls = "hc-ev plain" if plain_first else "hc-ev"
+    return f'<table class="{cls}"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>'
+
+
 def evidence_table(rows: list[tuple[str, str, str]]) -> str:
-    """Time / Source / What as a small table that wraps long text (a dataframe would cut it off)."""
-    body = "".join(f"<tr><td>{esc(t)}</td><td>{esc(s)}</td><td>{esc(w)}</td></tr>" for t, s, w in rows)
-    return (f'<table class="hc-ev"><thead><tr><th>Time</th><th>Source</th><th>What</th></tr></thead>'
-            f"<tbody>{body}</tbody></table>")
+    return html_table(["Time", "Source", "What"], rows)
 
 
 def context_line(f) -> str:
@@ -190,22 +201,18 @@ def lists_below(result) -> None:
         st.subheader("Carried over from last handover")
         rows = []
         for item in result.carried:
-            ex = result.explanations[item.asset_id]
-            rows.append(f'<div class="hc-row"><b>{esc(item.asset_id)}</b> · {esc(ex["headline"])}'
+            headline = result.explanations[item.asset_id]["headline"].removeprefix(f"{item.asset_id}: ")
+            rows.append(f'<div class="hc-row"><b>{esc(item.asset_id)}</b> · {esc(headline)}'
                         f'<div class="hc-quiet">Previously dismissed: {esc(respond.dismissal_line(item.dismissal))}'
-                        f'</div></div>')
+                        f'</div>{outgoing_box(item.review)}</div>')
         show("".join(rows))
         st.caption("Still dismissed, and no worse than when it was dismissed. "
                    "It comes back to the top list if it gets worse.")
 
     with st.expander(f"Checked, not urgent ({len(result.not_urgent)} items)", expanded=False):
-        table = pd.DataFrame([
-            {"Asset": i.asset_id,
-             "What it is": i.finding.asset_type or "not in asset list",
-             "What we saw": context_line(i.finding)}
-            for i in result.not_urgent
-        ], columns=["Asset", "What it is", "What we saw"])
-        st.dataframe(table, hide_index=True, width="stretch")
+        rows = [(i.asset_id, i.finding.asset_type or "not in asset list", context_line(i.finding))
+                for i in result.not_urgent]
+        show(html_table(["Asset", "What it is", "What we saw"], rows, plain_first=True))
 
 
 def sign_off_section(result, signed: dict | None) -> None:
@@ -218,23 +225,28 @@ def sign_off_section(result, signed: dict | None) -> None:
                            file_name=f"handover-record-{shift.id}.html", mime="text/html",
                            key=f"download-{shift.id}")
         with st.expander("View record"):
-            st.dataframe(pd.DataFrame([
-                {"#": i["rank"], "Asset": i["asset"], "Action": i["action"],
-                 "Outgoing comment": i["outgoing_comment"], "Response": i["response"],
-                 "Reason": i["reason"], "By": i["responder"], "When": state.short_time(i["response_time"])}
-                for i in signed["items"]]), hide_index=True, width="stretch")
+            show(html_table(
+                ["#", "Asset", "Action", "Outgoing comment", "Response", "Reason", "By", "When"],
+                [(i["rank"], i["asset"], i["action"], i["outgoing_comment"], i["response"], i["reason"],
+                  i["responder"], state.short_time(i["response_time"])) for i in signed["items"]],
+                plain_first=True))
+            carried = signed.get("carried_over", [])
+            if carried:
+                st.caption("Carried over from last handover: " + ", ".join(i["asset"] for i in carried))
             st.caption("Checked, not urgent: " + ", ".join(i["asset"] for i in signed["not_urgent"]))
         return
 
     ready = respond.all_responded(result.top, result.responses)
-    key = f"signer_{shift.id}"
-    st.session_state.setdefault(key, st.session_state.get(f"incoming_{shift.id}", ""))
-    signer = st.text_input("Signed off by (your name)", key=key)
+    # No widget key: the default follows the Incoming engineer field until someone types here.
+    signer = st.text_input("Signed off by (your name)", value=_name(shift.id))
     if not ready:
         st.caption(f"Respond to every item first ({result.responded_count} of {len(result.top)} done).")
     if st.button("Sign off handover", key=f"signoff-{shift.id}", type="primary",
                  disabled=not ready or not signer.strip()):
-        record.sign_off(result, signer)
+        try:
+            record.sign_off(result, signer, incoming=_name(shift.id))
+        except ValueError as e:  # e.g. someone else signed off a moment ago
+            st.session_state["flash"] = str(e).capitalize() + "."
         _changed()
         st.rerun()
 

@@ -23,20 +23,27 @@ def items_to_review(findings: dict) -> list:
 def load(shift_id: str) -> dict:
     """{asset: {"choice", "comment", "name", "at"}} for one shift."""
     data = state.read(FILE).get(shift_id, {})
+    if not isinstance(data, dict):
+        return {}
     return {a: r for a, r in data.items() if isinstance(r, dict) and r.get("choice") in CHOICES}
 
 
 def save(shift_id: str, asset: str, choice: str, comment: str, name: str) -> None:
     if choice not in CHOICES:
         raise ValueError(f"unknown choice {choice!r}")
-    data = state.read(FILE)
-    data.setdefault(shift_id, {})[asset] = {
+    review = {
         "choice": choice,
         "comment": comment.strip(),
         "name": name.strip() or "Outgoing engineer",
         "at": state.now_iso(),
     }
-    state.write(FILE, data)
+
+    def change(data):
+        if not isinstance(data.get(shift_id), dict):
+            data[shift_id] = {}
+        data[shift_id][asset] = review
+
+    state.update(FILE, change)
 
 
 def is_complete(shift_id: str, findings: dict) -> bool:

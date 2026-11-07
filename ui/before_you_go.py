@@ -65,6 +65,10 @@ def render(result, on_saved) -> None:
         if not name.strip():
             st.error("Enter your name first.")
             return
+        orphan = [a for a, c in comments.items() if c.strip() and not choices.get(a)]
+        if orphan:
+            st.error("Pick a view for " + ", ".join(orphan) + " (or clear the comment), then save again.")
+            return
         done = 0
         for asset, choice in choices.items():
             if choice:

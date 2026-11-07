@@ -28,27 +28,37 @@ EXPIRY_OPTIONS = {
     "ticket": "Until a ticket is closed",
 }
 CLOSED_TICKET_STATUSES = {"closed", "resolved", "cancelled"}
+ACTIVE_TICKET_STATUSES = {"open", "scheduled", "approved"}
 
 
 # ---------- responses (one per item per handover) ----------
 
 def load_responses(shift_id: str) -> dict:
     data = state.read(RESPONSES_FILE).get(shift_id, {})
+    if not isinstance(data, dict):
+        return {}
     return {a: r for a, r in data.items() if isinstance(r, dict) and r.get("kind") in RESPONSE_LABELS}
 
 
 def _save_response(shift_id: str, asset: str, response: dict) -> None:
-    data = state.read(RESPONSES_FILE)
-    data.setdefault(shift_id, {})[asset] = response
-    state.write(RESPONSES_FILE, data)
+    def change(data):
+        if not isinstance(data.get(shift_id), dict):
+            data[shift_id] = {}
+        data[shift_id][asset] = response
+    state.update(RESPONSES_FILE, change)
 
 
 def _drop_dismissal_made_here(shift_id: str, asset: str) -> None:
-    """Changing a response from "Dismissed" to something else removes that dismissal."""
-    dismissals = state.read(DISMISSALS_FILE)
-    if dismissals.get(asset, {}).get("shift") == shift_id:
-        del dismissals[asset]
-        state.write(DISMISSALS_FILE, dismissals)
+    """Changing a response from "Dismissed" to something else removes that dismissal,
+    and puts back the earlier one it replaced (if any)."""
+    def change(dismissals):
+        d = dismissals.get(asset)
+        if isinstance(d, dict) and d.get("shift") == shift_id:
+            if isinstance(d.get("previous"), dict):
+                dismissals[asset] = d["previous"]
+            else:
+                del dismissals[asset]
+    state.update(DISMISSALS_FILE, change)
 
 
 def got_it(shift_id: str, asset: str, name: str) -> None:
@@ -56,9 +66,22 @@ def got_it(shift_id: str, asset: str, name: str) -> None:
     _save_response(shift_id, asset, {"kind": "got_it", "name": name.strip(), "at": state.now_iso()})
 
 
-def ticket_drafted(shift_id: str, asset: str, name: str) -> None:
-    _drop_dismissal_made_here(shift_id, asset)
+def ticket_drafted(shift_id: str, asset: str, name: str) -> bool:
+    """Record "Ticket drafted", unless the item already has a response (looking at the draft
+    must never overwrite a "Got it" or a dismissal). Returns True if it was recorded."""
+    if asset in load_responses(shift_id):
+        return False
     _save_response(shift_id, asset, {"kind": "ticket_drafted", "name": name.strip(), "at": state.now_iso()})
+    return True
+
+
+def known_ticket(reference: str, tickets: pd.DataFrame) -> str | None:
+    """The ticket id matching a typed reference (ignoring case and spaces), or None."""
+    ref = reference.strip().upper()
+    if not ref:
+        return None
+    match = tickets[tickets["id"].str.strip().str.upper() == ref]
+    return match.iloc[0]["id"] if len(match) else None
 
 
 def dismiss(shift_id: str, handover: pd.Timestamp, finding, name: str, reason: str,
@@ -68,6 +91,8 @@ def dismiss(shift_id: str, handover: pd.Timestamp, finding, name: str, reason: s
         raise ValueError(f"unknown reason {reason!r}")
     if expiry not in EXPIRY_OPTIONS:
         raise ValueError(f"unknown expiry {expiry!r}")
+    if expiry == "ticket" and not reference.strip():
+        raise ValueError("'Until a ticket is closed' needs the ticket id as the reference")
     dismissal = {
         "asset": finding.asset_id,
         "reason": reason,
@@ -82,9 +107,16 @@ def dismiss(shift_id: str, handover: pd.Timestamp, finding, name: str, reason: s
         "unit": finding.unit,
         "breaches": list(finding.breaches),
     }
-    dismissals = state.read(DISMISSALS_FILE)
-    dismissals[finding.asset_id] = dismissal
-    state.write(DISMISSALS_FILE, dismissals)
+
+    def change(dismissals):
+        old = dismissals.get(finding.asset_id)
+        if isinstance(old, dict) and old.get("shift") != shift_id:
+            dismissal["previous"] = {k: v for k, v in old.items() if k != "previous"}  # keep the history
+        elif isinstance(old, dict) and isinstance(old.get("previous"), dict):
+            dismissal["previous"] = old["previous"]
+        dismissals[finding.asset_id] = dismissal
+
+    state.update(DISMISSALS_FILE, change)
     _save_response(shift_id, finding.asset_id, {
         "kind": "dismissed", "name": name.strip(), "at": dismissal["recorded_at"],
         "reason": reason, "reference": dismissal["reference"], "note": dismissal["note"], "expiry": expiry,
@@ -92,8 +124,28 @@ def dismiss(shift_id: str, handover: pd.Timestamp, finding, name: str, reason: s
     return dismissal
 
 
+def _valid_dismissal(d) -> bool:
+    """Skip hand-edited or damaged entries instead of crashing the whole app."""
+    if not isinstance(d, dict) or not isinstance(d.get("reason"), str):
+        return False
+    try:
+        pd.Timestamp(d.get("made_at"))
+    except (ValueError, TypeError):
+        return False
+    worst = d.get("worst_value")
+    if worst is not None and not isinstance(worst, (int, float)):
+        return False
+    return isinstance(d.get("breaches", []), list)
+
+
 def load_dismissals() -> dict:
-    return {a: d for a, d in state.read(DISMISSALS_FILE).items() if isinstance(d, dict) and d.get("made_at")}
+    out = {}
+    for asset, d in state.read(DISMISSALS_FILE).items():
+        if _valid_dismissal(d) and d.get("made_at"):
+            if not _valid_dismissal(d.get("previous")):
+                d = {k: v for k, v in d.items() if k != "previous"}
+            out[asset] = d
+    return out
 
 
 # ---------- does an earlier dismissal still apply? ----------
@@ -111,12 +163,16 @@ def dismissal_status(dismissal: dict | None, finding, shift_id: str, handover: p
     expiry = dismissal.get("expiry")
     if expiry == "handover":
         return "expired", "was for one handover only"
-    if expiry == "24h" and handover > made + pd.Timedelta(hours=24):
+    if expiry == "24h" and handover >= made + pd.Timedelta(hours=24):
         return "expired", "24 hours have passed"
-    if expiry == "ticket" and dismissal.get("reference"):
-        ref = tickets[tickets["id"] == dismissal["reference"]]
-        if len(ref) and ref.iloc[0]["status"] in CLOSED_TICKET_STATUSES:
-            return "expired", f"{dismissal['reference']} is closed"
+    if expiry == "ticket":
+        ref = known_ticket(dismissal.get("reference", ""), tickets)
+        if ref is not None:
+            if tickets[tickets["id"] == ref].iloc[0]["status"] in CLOSED_TICKET_STATUSES:
+                return "expired", f"{ref} is closed"
+        elif finding.active_tickets.empty:
+            # Reference missing or unknown: it lasts only while the asset has a live ticket.
+            return "expired", "no live ticket for this asset"
 
     then, now = dismissal.get("worst_value"), finding.latest_value
     if then is not None and now is not None and finding.is_worse(now, then):
@@ -129,9 +185,9 @@ def dismissal_status(dismissal: dict | None, finding, shift_id: str, handover: p
 
 
 def dismissal_line(dismissal: dict) -> str:
-    """'Known sensor or instrument fault · S. O'Brien · Sat 07:00'."""
+    """'Known sensor or instrument fault · S. O'Brien · Sat 07:00 handover'."""
     when = pd.Timestamp(dismissal["made_at"])
-    parts = [dismissal["reason"]]
+    parts = [dismissal.get("reason", "Dismissed")]
     if dismissal.get("reference"):
         parts[0] += f" ({dismissal['reference']})"
     parts += [dismissal.get("by") or "unknown", f"{when:%a %H:%M} handover"]

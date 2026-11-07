@@ -15,6 +15,7 @@ import re
 import pandas as pd
 
 from src import llm
+from src.due import when
 from src.load import fmt_time
 from src.score import REASON_LABELS, ScoredItem
 
@@ -148,7 +149,7 @@ def evidence_rows(item: ScoredItem, cited: list[str] | None = None) -> list[tupl
     rows = [(t, s, w) for _, t, s, w in timed]
     for _, t in f.tickets.iterrows():
         if keep is None or t["id"] in keep:
-            due = fmt_time(t["due"], "%a %H:%M") or "not set"
+            due = when(t["due"], f.now)
             rows.append(("—", f"Ticket {t['id']}", f"{t['priority']} {t['status']}, due {due} · "
                                                    f"{t['assignee']} · {t['summary']}"))
     return rows
@@ -176,10 +177,10 @@ def template_headline(item: ScoredItem) -> str:
     elif "no_open_ticket" in r:
         text = f"{f.asset_id} {kind}: problem noted, no ticket".replace(" :", ":")
     elif "due_soon" in r and calibration:
-        text = f"{f.asset_id} calibration due {f.due_by:%a %H:%M}"
+        text = f"{f.asset_id} calibration due {when(f.due_by, f.now)}"
     elif "due_soon" in r:
         what = f.due_by_source.split(" ")[0] if f.active_tickets.shape[0] else "deviation"
-        text = f"{f.asset_id} {kind}: {what} due {f.due_by:%a %H:%M}".replace(" :", ":")
+        text = f"{f.asset_id} {kind}: {what} due {when(f.due_by, f.now)}".replace(" :", ":")
     elif "near_limit" in r:
         text = f"{f.asset_id} {meas} close to {value_with_unit(f.limit, f.unit)} alarm"
     elif "unacknowledged_latest" in r:
@@ -241,7 +242,7 @@ def template_bullets(item: ScoredItem) -> list[str]:
 
     for _, t in f.active_tickets.iterrows():
         if f.due_by is not None and t["id"] in f.due_by_source:
-            out.append(f"{t['id']} ({t['priority']}, {t['assignee']}) is due {fmt_time(t['due'], '%a %H:%M')}.")
+            out.append(f"{t['id']} ({t['priority']}, {t['assignee']}) is due {when(t['due'], f.now)}.")
 
     if f.details.get("note"):
         note = str(f.details["note"])
@@ -274,12 +275,12 @@ def template_action(item: ScoredItem) -> str:
         return f"Check {f.asset_id} on site and confirm the open ticket covers what the data shows."
     if "due_soon" in r and len(f.active_tickets):
         t = f.active_tickets.sort_values("due").iloc[0]
-        action = f"Confirm with {t['assignee']} that {t['id']} will be done before {fmt_time(t['due'], '%a %H:%M')}"
+        action = f"Confirm with {t['assignee']} that {t['id']} will be done before {when(t['due'], f.now)}"
         if calibration:
             action += f", or tag {f.asset_id} out of use"
         return action + "."
     if "due_soon" in r:
-        return f"Make sure {f.asset_id} is dealt with before {fmt_time(f.due_by, '%a %H:%M')}."
+        return f"Make sure {f.asset_id} is dealt with before {when(f.due_by, f.now)}."
     if "near_limit" in r:
         return f"Keep an eye on {f.asset_id} and check it before it reaches the alarm limit."
     if "unacknowledged_latest" in r:

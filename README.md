@@ -39,7 +39,7 @@ python -m venv .venv            # macOS: python3 -m venv .venv
 pip install -r requirements.txt
 
 streamlit run app.py      # opens http://localhost:8501
-pytest                    # 76 tests, all offline
+pytest                    # 125 tests, all offline
 ```
 
 The first time you run Streamlit it may ask for an email address in the terminal. Press Enter to skip.
@@ -60,8 +60,16 @@ for the page's links; the full handover screen with responses and sign-off is th
 ### Reset the demo
 
 Responses, dismissals, reviews and sign-offs are saved in `data/state/` and survive restarts.
-To start again, delete `data/state/*.json` and the files in `data/state/records/`.
-They are recreated empty on the next run.
+To start again, run one of these (they keep `records/.gitkeep`), then **refresh the browser tab**:
+
+```bash
+# Windows PowerShell
+Remove-Item data/state/*.json; Get-ChildItem data/state/records -Exclude .gitkeep | Remove-Item
+# macOS / Linux
+rm -f data/state/*.json; find data/state/records -type f ! -name .gitkeep -delete
+```
+
+The files are recreated empty on the next run.
 
 ### Optional: live LLM
 
@@ -140,11 +148,17 @@ were already known. At a **later** handover:
 
 - **Still applies** (not expired, and no worse): score x0.3. The item moves to "Carried over from
   last handover" with a grey line: *Previously dismissed: reason · who · when*.
-- **Now worse**: the latest reading is worse than the worst reading when it was dismissed, or a
-  new rule breach appeared (past the alarm or warning limit, or overdue). The dismissal is
-  ignored, the item ranks normally and the card says **"Dismissed earlier, now worse"**.
-- **Expired**: "This handover only", 24 hours after the handover it was made at, or "Until a
-  ticket is closed" once the referenced ticket is closed or resolved.
+- **Now worse**: the latest reading is worse than the worst reading when it was dismissed, a
+  new rule breach appeared (past the alarm or warning limit, or overdue), or the next outgoing
+  engineer marked it "It's a real issue" in Before you go. The dismissal is ignored, the item
+  ranks normally and the card says **"Dismissed earlier, now worse"**. Dismissing it again
+  keeps that history on the card and in the record.
+- **Expired**: "This handover only"; "24 hours" once 24 hours have passed since the handover it
+  was made at; "Until a ticket is closed" once the referenced ticket (the reference is required;
+  case doesn't matter) is closed or resolved. If that ticket id isn't in the ticket list, the
+  dismissal lasts only while the asset still has a live ticket.
+
+"Draft ticket" never replaces a response you already gave, and a handover can only be signed off once.
 
 Expiry runs on the handover clock (the dismissal was made at the Sat 07:00 handover), so the demo
 behaves the same on any day. Responses and sign-offs record the real time.
@@ -196,5 +210,5 @@ src/                           pipeline modules (see table above)
 handover-sample-pack/          Sat 07:00 handover data + answer key + assets.json
 handover-sample-pack/day_shift Sat 19:00 handover data (carry-forward demo)
 data/state/                    saved reviews, responses, dismissals, records (not committed)
-tests/                         76 offline tests, including UI tests with Streamlit's AppTest
+tests/                         125 offline tests, including UI tests with Streamlit's AppTest
 ```

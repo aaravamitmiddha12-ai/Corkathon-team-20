@@ -103,3 +103,34 @@ def test_both_handovers_render_all_sections(shift):
     assert {"What the notes say", "Needs you first", "Handover record"} <= set(subheaders)
     assert any(e.label.startswith("Checked, not urgent") for e in at.expander)
     assert "Key:" in page_html(at)
+
+
+def test_dismiss_until_ticket_closed_without_reference_explains_why():
+    at = start()
+    at.button(key="dis-night-HPLC-07").click().run()
+    at.radio(key="expiry-night-HPLC-07").set_value("ticket")
+    at.button(key="FormSubmitter:dismiss-form-night-HPLC-07-Save dismissal").click().run()
+    assert not at.exception, at.exception
+    assert any("needs the ticket id" in e.value for e in at.error)
+    assert "HPLC-07" not in respond.load_responses("night")
+
+
+def test_carried_row_shows_the_outgoing_comment():
+    from src import review
+    night = run(mode="manual", shift="night")
+    respond.dismiss("night", SHIFTS["night"].handover, night.findings["FRZ-12"], "S. O'Brien",
+                    "Known sensor or instrument fault", expiry="24h")
+    review.save("day", "FRZ-12", "fine", "Probe replacement booked for Monday", "S. O'Brien")
+    html = page_html(start("day"))
+    assert "Probe replacement booked for Monday" in html
+    assert "<b>FRZ-12</b> · FRZ-12:" not in html                     # no repeated asset id
+
+
+def test_typed_incoming_name_survives_switching_shifts():
+    at = start()
+    at.text_input(key="incoming_night").input("Jane Doe").run()
+    at.radio(key="shift").set_value("day").run()
+    at.radio(key="shift").set_value("night").run()
+    assert at.text_input(key="incoming_night").value == "Jane Doe"
+    at.button(key="got-night-FRZ-12").click().run()
+    assert respond.load_responses("night")["FRZ-12"]["name"] == "Jane Doe"

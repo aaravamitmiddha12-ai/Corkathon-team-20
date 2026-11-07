@@ -9,7 +9,16 @@ from src import respond, review, state
 from src.due import due_label
 
 
-def build(result, signer: str) -> dict:
+def _rest_entry(result, i) -> dict:
+    return {
+        "asset": i.asset_id,
+        "headline": result.explanations[i.asset_id]["headline"],
+        "carried_over": i.carried_over,
+        "previously_dismissed": respond.dismissal_line(i.dismissal) if i.carried_over else "",
+    }
+
+
+def build(result, signer: str, incoming: str | None = None) -> dict:
     shift = result.shift
     items = []
     for n, item in enumerate(result.top, start=1):
@@ -33,41 +42,40 @@ def build(result, signer: str) -> dict:
             "expiry": respond.EXPIRY_OPTIONS.get(r.get("expiry"), ""),
             "dismissed_earlier": item.dismissal_status == "now_worse",
         })
-    not_urgent = [
-        {
-            "asset": i.asset_id,
-            "headline": result.explanations[i.asset_id]["headline"],
-            "carried_over": i.carried_over,
-            "previously_dismissed": respond.dismissal_line(i.dismissal) if i.carried_over else "",
-        }
-        for i in result.rest
-    ]
     return {
         "shift": shift.title,
         "shift_id": shift.id,
         "outgoing_engineer": result.pack.outgoing_engineer,
         "outgoing_review_completed": result.review_complete,
-        "incoming_engineer": signer.strip(),
+        "incoming_engineer": (incoming or signer).strip(),
         "signed_off_by": signer.strip(),
         "signed_off_at": state.now_iso(),
         "items": items,
-        "not_urgent": not_urgent,
+        # The same two groups the screen shows below the top 5.
+        "carried_over": [_rest_entry(result, i) for i in result.carried],
+        "not_urgent": [_rest_entry(result, i) for i in result.not_urgent],
     }
 
 
-def sign_off(result, signer: str) -> tuple[dict, Path, Path]:
-    """Save the record. Refuses unless every top-5 item has a response and a name is given."""
+def sign_off(result, signer: str, incoming: str | None = None) -> tuple[dict, Path, Path]:
+    """Save the record. Refuses unless every top-5 item has a response, a name is given,
+    and this handover hasn't been signed off already (the record is read-only)."""
     if not respond.all_responded(result.top, result.responses):
         raise ValueError("every item in the top 5 needs a response before sign-off")
     if not signer.strip():
         raise ValueError("a name is needed to sign off")
-    rec = build(result, signer)
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-    folder = state.state_dir() / "records"
-    json_path = folder / f"{result.shift.id}_{stamp}.json"
-    html_path = folder / f"{result.shift.id}_{stamp}.html"
-    json_path.write_text(json.dumps(rec, indent=2, ensure_ascii=False), encoding="utf-8")
-    html_path.write_text(to_html(rec), encoding="utf-8")
+    with state.LOCK:
+        if latest(result.shift.id) is not None:
+            raise ValueError("this handover has already been signed off")
+        rec = build(result, signer, incoming)
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        folder = state.state_dir() / "records"
+        json_path = folder / f"{result.shift.id}_{stamp}.json"
+        html_path = folder / f"{result.shift.id}_{stamp}.html"
+        with open(json_path, "x", encoding="utf-8") as fh:  # "x": never overwrite an existing record
+            fh.write(json.dumps(rec, indent=2, ensure_ascii=False))
+        with open(html_path, "x", encoding="utf-8") as fh:
+            fh.write(to_html(rec))
     return rec, json_path, html_path
 
 
@@ -107,12 +115,12 @@ def to_html(rec: dict) -> str:
         rows.append(f"<tr><td>{i['rank']}</td><td><b>{e(i['asset'])}</b><br>{e(i['headline'])}{due}</td>"
                     f"<td>{e(i['action'])}</td><td>{outgoing or '—'}</td><td>{response}</td></tr>")
 
-    rest = "".join(
+    carried = "".join(
         f"<li><b>{e(i['asset'])}</b> · {e(i['headline'])}"
-        + (f" <span class='muted'>(previously dismissed: {e(i['previously_dismissed'])})</span>"
-           if i["carried_over"] else "") + "</li>"
-        for i in rec["not_urgent"]
+        f" <span class='muted'>(previously dismissed: {e(i['previously_dismissed'])})</span></li>"
+        for i in rec.get("carried_over", [])
     )
+    rest = "".join(f"<li><b>{e(i['asset'])}</b> · {e(i['headline'])}</li>" for i in rec["not_urgent"])
     review_state = "completed" if rec["outgoing_review_completed"] else "not completed"
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
@@ -140,6 +148,8 @@ def to_html(rec: dict) -> str:
 <h2>Needs you first</h2>
 <table><thead><tr><th>#</th><th>Item</th><th>Action</th><th>Outgoing engineer</th><th>Response</th></tr></thead>
 <tbody>{''.join(rows)}</tbody></table>
+<h2>Carried over from last handover</h2>
+<ul>{carried or '<li>None</li>'}</ul>
 <h2>Checked, not urgent</h2>
 <ul>{rest or '<li>None</li>'}</ul>
 <p class="readonly">Read-only record produced by Handover Check. Print with your browser (Ctrl+P / Cmd+P).</p>

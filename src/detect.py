@@ -207,7 +207,12 @@ def detect_asset(asset_id: str, pack: Pack, tagged_notes: pd.DataFrame) -> Findi
     def past(value, limit):
         return past_limit(value, limit, f.higher_worse)
 
-    f.due_by, f.due_by_source = compute_due_by(f.rules, alerts, readings, f.limit, past, f.active_tickets)
+    earlier = None
+    if pack.previous_alerts is not None:
+        earlier = pack.previous_alerts[pack.previous_alerts["asset"] == asset_id].sort_values("timestamp")
+    f.due_by, f.due_by_source = compute_due_by(
+        f.rules, alerts, readings, f.limit, past, f.active_tickets,
+        earlier, [parse_value(m) for m in earlier["message"]] if earlier is not None else None)
     f.due_soon = f.due_by is not None and f.due_by <= pack.shift.incoming_end
 
     if f.limit is not None and any(past(v, f.limit) for _, v in f.values):

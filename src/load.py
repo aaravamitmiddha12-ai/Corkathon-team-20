@@ -25,6 +25,7 @@ class Shift:
     data_dir: Path
     notes_file: str
     incoming_engineer: str  # default name for the person taking over
+    previous: str | None = None  # the shift before this one, if we have its data
 
     @property
     def incoming_end(self) -> pd.Timestamp:
@@ -40,7 +41,7 @@ SHIFTS = {
     "night": Shift("night", "Sat 07:00 handover", pd.Timestamp("2026-11-06 19:00"), pd.Timestamp("2026-11-07 07:00"),
                    DATA_DIR, "shift_notes_night.txt", "S. O'Brien"),
     "day": Shift("day", "Sat 19:00 handover", pd.Timestamp("2026-11-07 07:00"), pd.Timestamp("2026-11-07 19:00"),
-                 DATA_DIR / "day_shift", "shift_notes_day.txt", "K. Walsh"),
+                 DATA_DIR / "day_shift", "shift_notes_day.txt", "K. Walsh", previous="night"),
 }
 DEFAULT_SHIFT = "night"
 
@@ -75,6 +76,7 @@ class Pack:
     answer_key: pd.DataFrame  # empty when the shift has no expert answer key
     shift: Shift
     outgoing_engineer: str
+    previous_alerts: pd.DataFrame | None = None  # the previous shift's alerts (for rule windows)
 
 
 def note_timestamp(hour: int, minute: int, shift_start: pd.Timestamp = SHIFTS["night"].start) -> pd.Timestamp:
@@ -171,4 +173,13 @@ def load_all(data_dir: Path | None = None, shift: str | Shift = DEFAULT_SHIFT) -
         answer_key=load_answer_key(folder / "answer_key.csv"),
         shift=s,
         outgoing_engineer=engineer_name(notes_path),
+        previous_alerts=_previous_alerts(s, data_dir),
     )
+
+
+def _previous_alerts(s: Shift, data_dir) -> pd.DataFrame | None:
+    """Only for the built-in sample folders: a copied test pack has no 'previous shift'."""
+    if s.previous is None or data_dir is not None:
+        return None
+    path = SHIFTS[s.previous].data_dir / "alerts.csv"
+    return load_alerts(path) if path.exists() else None

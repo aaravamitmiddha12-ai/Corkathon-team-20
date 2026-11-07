@@ -20,6 +20,9 @@ show(CSS)
 
 st.session_state.setdefault("page", "home")
 st.session_state.setdefault("state_version", 0)
+for _shift in SHIFTS:
+    if f"incoming_{_shift}" in st.session_state:
+        st.session_state[f"incoming_{_shift}"] = st.session_state[f"incoming_{_shift}"]
 
 
 def state_changed() -> None:

@@ -20,18 +20,23 @@ NOTE = "#5b6b84"
 TWO_HOURS_MS = 2 * 3600 * 1000
 
 
-def _base_layout(fig: go.Figure, title: str, y_title: str, x_range: list, height: int) -> go.Figure:
+def _base_layout(fig: go.Figure, title: str, y_title: str, x_range: list, height: int,
+                 legend_space: int = 90) -> go.Figure:
+    """Shared look. The legend sits at the bottom of the whole figure (not the plot), with its own
+    reserved space, so it never covers the time axis title even when it wraps on a phone."""
     fig.update_layout(
         title=dict(text=title, x=0, xanchor="left", font=dict(size=14)),
-        height=height,
-        margin=dict(l=10, r=10, t=44, b=10),
-        legend=dict(orientation="h", yanchor="top", y=-0.28, x=0, xanchor="left", font=dict(size=11)),
+        height=height + legend_space,
+        margin=dict(l=10, r=10, t=44, b=legend_space),
+        legend=dict(orientation="h", yref="container", y=0, yanchor="bottom", x=0, xanchor="left",
+                    font=dict(size=11)),
         hovermode="closest",
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
     )
+    # tick0 = shift start, so the 2-hourly ticks land on 19:00, 21:00 ... 07:00 (not on even hours).
     fig.update_xaxes(title_text="Time (HH:MM)", tickformat="%H:%M", range=x_range, dtick=TWO_HOURS_MS,
-                     showgrid=False, zeroline=False)
+                     tick0=x_range[0], showgrid=False, zeroline=False)
     fig.update_yaxes(title_text=y_title, gridcolor="rgba(128,128,128,0.18)", zeroline=False)
     return fig
 
@@ -89,7 +94,7 @@ def reading_chart(finding, shift) -> go.Figure | None:
             ys += [f.limit, v, None]
         fig.add_trace(go.Scatter(x=xs, y=ys, mode="lines", line=dict(color=LINE_GREY, width=2),
                                  hoverinfo="skip", name="Excursion (short separate event)"))
-    else:
+    elif len(times) >= 2:  # a single reading has no trend line to draw (or to list in the legend)
         fig.add_trace(go.Scatter(x=times, y=values, mode="lines", line=dict(color=LINE_GREY, width=2),
                                  hoverinfo="skip", name="Reading trend (continuous)"))
 
@@ -116,7 +121,7 @@ def reading_chart(finding, shift) -> go.Figure | None:
 
     fig.update_yaxes(range=[y_lo, y_hi])
     title = f"{f.asset_id} · {measurement.lower()} ({unit})" if unit else f"{f.asset_id} · {measurement.lower()}"
-    return _base_layout(fig, title, y_title, [x0, x1], height=340)
+    return _base_layout(fig, title, y_title, [x0, x1], height=300, legend_space=120)
 
 
 def timeline(result) -> go.Figure:
@@ -156,10 +161,8 @@ def timeline(result) -> go.Figure:
             hovertemplate="%{customdata[0]} note<br>%{customdata[1]}<extra></extra>"))
 
     fig.update_yaxes(categoryorder="array", categoryarray=list(reversed(rows)), title_text="Asset")
-    fig = _base_layout(fig, f"Shift at a glance · {shift.start:%a %H:%M} to {shift.handover:%a %H:%M}",
-                       "Asset", [shift.start, shift.handover], height=110 + 38 * len(rows))
-    fig.update_layout(legend=dict(y=-0.32 if len(rows) > 4 else -0.45))
-    return fig
+    return _base_layout(fig, f"Shift at a glance · {shift.start:%a %H:%M} to {shift.handover:%a %H:%M}",
+                        "Asset", [shift.start, shift.handover], height=90 + 38 * len(rows), legend_space=70)
 
 
 def _hover_safe(text: str) -> str:

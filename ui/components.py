@@ -63,8 +63,9 @@ CSS = """
 .hc-ev th, .hc-ev td { text-align: left; vertical-align: top; padding: 5px 8px;
                        border-bottom: 1px solid rgba(128, 128, 128, 0.22); }
 .hc-ev th { font-weight: 600; opacity: 0.75; }
-.hc-ev td:first-child { font-family: ui-monospace, Menlo, Consolas, monospace; white-space: nowrap; }
-.hc-ev td:nth-child(2) { white-space: nowrap; }
+.hc-ev:not(.plain) td:first-child { font-family: ui-monospace, Menlo, Consolas, monospace; white-space: nowrap; }
+.hc-ev:not(.plain) td:nth-child(2) { white-space: nowrap; }
+.hc-ev.plain td:first-child { font-weight: 600; white-space: nowrap; }
 .hc-side { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 700px) { .hc-side { grid-template-columns: 1fr; } }
 .hc-side h4 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.7; margin: 0 0 4px 0; }
