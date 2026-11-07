@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Handover Check</title>
+<link rel="stylesheet" href="home.css">
+<script src="theme.js"></script>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="wrap">
+    <div class="brand">
+      <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
+        <rect width="20" height="20" rx="5" fill="currentColor"/>
+        <path d="M5.5 10.5 8.5 13.5 14.5 6.5" fill="none" stroke="var(--card)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <b>Handover Check</b>
+      <span class="muted" id="site"></span>
+    </div>
+    <span class="status-pill reading" id="status" role="status"><i></i><span id="status-text">Reading the night…</span></span>
+    <span class="incoming muted" id="incoming"></span>
+    <button class="icon-button" id="theme-toggle" type="button" aria-label="Switch between light and dark" title="Switch theme (T)">
+      <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
+        <circle cx="8" cy="8" r="6.25" fill="none" stroke="currentColor" stroke-width="1.5"/>
+        <path d="M8 1.75a6.25 6.25 0 0 1 0 12.5z" fill="currentColor"/>
+      </svg>
+    </button>
+    <button class="icon-button" id="help-toggle" type="button" aria-label="Keyboard shortcuts" aria-expanded="false" aria-controls="help" title="Keyboard shortcuts (?)">?</button>
+  </div>
+</header>
+
+<div class="help" id="help" role="dialog" aria-label="Keyboard shortcuts" hidden>
+  <h2>Keyboard shortcuts</h2>
+  <div>Start handover <span><kbd>↵</kbd></span></div>
+  <div>Move through first in line <span><kbd>J</kbd><kbd>K</kbd></span></div>
+  <div>Switch theme <span><kbd>T</kbd></span></div>
+  <div>Show shortcuts <span><kbd>?</kbd></span></div>
+</div>
+
+<main class="wrap" id="app"></main>
+<div class="tooltip" id="tooltip" role="tooltip" hidden></div>
+
+<script src="home.js"></script>
+</body>
+</html>
