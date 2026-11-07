@@ -111,6 +111,7 @@ try:
         check("top label clear of the Streamlit header", lab["y"] >= 60, str(lab))
         check("amber band drawn", page.locator(".js-plotly-plot .barlayer .point").count() >= 2)
         # Hover
+        page.evaluate("document.getElementById('sec-2').scrollIntoView({behavior: 'instant'})"); page.wait_for_timeout(1600)  # the timeline starts below the first screen
         box = page.evaluate("""() => {const gd=document.querySelector('.st-key-baton-timeline .js-plotly-plot'), xa=gd._fullLayout.xaxis, ya=gd._fullLayout.yaxis, r=gd.getBoundingClientRect();
            return {x:r.left+xa._offset+xa.d2p('2026-11-07 04:58:33'), y:r.top+ya._offset+ya.l2p(1)}}""")
         page.mouse.move(box["x"], box["y"])
@@ -159,7 +160,7 @@ try:
         check("smooth scroll on the real scroller", scroller[0] == "smooth", str(scroller))
 
         # Jump: click in a chart row
-        page.evaluate("""() => document.querySelector('[data-testid="stMain"]').scrollTo({top:0,behavior:'instant'})""")
+        page.evaluate("document.getElementById('sec-2').scrollIntoView({behavior: 'instant'})"); page.wait_for_timeout(1600)  # the timeline starts below the first screen
         page.wait_for_timeout(300)
         pos = page.evaluate("""() => {const gd=document.querySelector('.st-key-baton-timeline .js-plotly-plot'), xa=gd._fullLayout.xaxis, ya=gd._fullLayout.yaxis, r=gd.getBoundingClientRect();
            return {x:r.left+xa._offset+xa.d2p('2026-11-06 20:00'), y:r.top+ya._offset+ya.l2p(2)}}""")
@@ -248,6 +249,9 @@ try:
         page = ctx.new_page()
         page.goto(URL)
         page.wait_for_selector(".st-key-baton-timeline .js-plotly-plot .scatterlayer", timeout=60000)
+        page.wait_for_timeout(800)
+        check("the timeline waits below the first screen, undrawn", page.evaluate("document.querySelector('.st-key-baton-timeline').getAttribute('data-baton-chart')") is None)
+        page.evaluate("document.getElementById('sec-2').scrollIntoView({behavior: 'instant'})")
         page.wait_for_function("document.querySelector('.st-key-baton-timeline').getAttribute('data-baton-chart')", timeout=20000)
         chart = page.evaluate(r"""() => {const box=document.querySelector('.st-key-baton-timeline'), pts=[...box.querySelectorAll('.scatterlayer .point')];
             const xy=pts.map(p=>[parseFloat(/translate\(([-\d.]+)/.exec(p.getAttribute('transform'))[1]), parseInt(p.style.getPropertyValue('--baton-d'))]);

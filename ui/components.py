@@ -454,6 +454,49 @@ div[class*="st-key-baton-card-"]:has(:focus-visible)::before, .baton-nav-asset:f
     transition: transform 320ms cubic-bezier(.2,0,0,1); transition-delay: calc(80ms + var(--wi, 0) * 60ms); }
 }
 
+/* ---------- the first screen: an overview with room around it, then the detail below ---------- */
+.st-key-baton-sec-1 { min-height: calc(100dvh - 152px); justify-content: center; }
+@media (max-width: 1023px) { .st-key-baton-sec-1 { min-height: calc(100dvh - 96px); } }
+.baton-overview { display: flex; flex-direction: column; }
+.baton-lede { font-size: 16px; line-height: 1.5; color: var(--baton-muted); margin: 16px 0 0 0; max-width: 60ch; }
+.baton-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 32px 0 0 0; }
+@container baton-main (max-width: 899px) { .baton-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@container baton-main (max-width: 339px) { .baton-tiles { grid-template-columns: 1fr; } }
+.baton-tile { display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 16px; border-radius: 12px;
+  border: 1px solid var(--baton-line); }
+.baton-tile .k { font: 500 12px/16px var(--baton-mono); letter-spacing: 0.08em; text-transform: uppercase; color: var(--baton-muted); }
+.baton-tile .v { font-size: 32px; line-height: 1.15; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.baton-tile .v.mono { font-family: var(--baton-mono); font-size: 24px; line-height: 1.55; letter-spacing: 0; }
+.baton-tile .v.live::before { content: var(--baton-handled, ""); }
+.baton-tile .c { font-size: 14px; line-height: 1.4; color: var(--baton-muted); overflow-wrap: anywhere; }
+.baton-tile .baton-nav-track { margin-top: 10px; }
+/* Amber only where notes and data disagree; red only when something is overdue. */
+.baton-tile.clash .v::before { content: ""; display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+  background: #E8A33D; margin-right: 10px; vertical-align: middle; }
+.baton-tile.overdue .v, .baton-tile.overdue .c { color: var(--baton-red); }
+.baton-actions { display: flex; flex-wrap: wrap; gap: 12px; margin: 32px 0 0 0; }
+.baton-cta { display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 18px; border-radius: 8px;
+  font-size: 16px; font-weight: 600; text-decoration: none !important; border: 1px solid var(--baton-focus);
+  background: var(--baton-focus); color: var(--baton-bg) !important;
+  transform: translate(var(--baton-mx, 0px), var(--baton-my, 0px)); transition: opacity 150ms ease-out, border-color 150ms ease-out, transform 150ms ease-out; }
+.baton-cta .baton-mono { font-weight: 600; }
+.baton-cta.ghost { background: transparent; color: var(--baton-text) !important; border-color: var(--baton-line-strong); font-weight: 500; }
+.baton-cta .arr { display: inline-block; transition: transform 200ms ease-out; }
+.baton-cta:focus-visible { outline: 2px solid var(--baton-focus); outline-offset: 2px; }
+.baton-cta:focus-visible .arr { transform: translateX(2px); }
+@media (hover: hover) {
+  .baton-cta:not(.ghost):hover { opacity: 0.88; }
+  .baton-cta.ghost:hover { border-color: var(--baton-text); }
+  .baton-cta:hover .arr { transform: translateX(2px); }
+}
+.baton-steps { display: flex; flex-wrap: wrap; gap: 8px 28px; list-style: none; padding: 0; margin: 32px 0 0 0;
+  font-size: 14px; color: var(--baton-muted); counter-reset: baton-step; }
+.baton-steps li { display: flex; align-items: baseline; gap: 8px; margin: 0; counter-increment: baton-step; }
+.baton-steps li::before { content: counter(baton-step); flex: none; display: inline-flex; align-items: center; justify-content: center;
+  width: 20px; height: 20px; border-radius: 50%; border: 1px solid var(--baton-line-strong); font: 600 12px var(--baton-mono);
+  color: var(--baton-text); transform: translateY(-1px); }
+.baton-steps b { color: var(--baton-text); font-weight: 600; }
+
 /* ---------- motion ---------- */
 @keyframes baton-in { from { opacity: 0; transform: translateY(6px); } }
 @keyframes baton-done { from { opacity: 0; transform: translateY(-4px); } }
@@ -567,7 +610,8 @@ def nav_state_rules(top: list, responses: dict, strong: bool = False) -> list[st
              for i in top if i.asset_id in responses]
     done = sum(1 for i in top if i.asset_id in responses)
     share = done / len(top) if top else 0
-    rules.append(f'{lead}.baton-nav-progress {{ --baton-count: "{done} of {len(top)} handled"; --baton-done: {share:.3f}; }}')
+    rules.append(f'{lead}.baton-nav-progress, {lead}.baton-tile-live {{ --baton-count: "{done} of {len(top)} handled"; '
+                 f'--baton-done: {share:.3f}; --baton-handled: "{done} of {len(top)}"; }}')
     return rules
 
 
@@ -626,7 +670,7 @@ NAV_SCRIPT = """<script>
   var fine = window.matchMedia("(hover: hover) and (pointer: fine)"), pulled = null;
   function release() { if (pulled) { pulled.style.removeProperty("--baton-mx"); pulled.style.removeProperty("--baton-my"); pulled = null; } }
   document.addEventListener("pointermove", function (e) {
-    var btn = e.target && e.target.closest ? e.target.closest('[data-testid="stBaseButton-primary"]') : null;
+    var btn = e.target && e.target.closest ? e.target.closest('[data-testid="stBaseButton-primary"], .baton-cta:not(.ghost)') : null;
     if (pulled && pulled !== btn) release();
     if (!btn || btn.disabled || !fine.matches || reduce.matches || e.pointerType !== "mouse") return;
     var r = btn.getBoundingClientRect();
@@ -751,6 +795,8 @@ NAV_SCRIPT = """<script>
   document.addEventListener("click", function (e) {
     var t = e.target; if (!t || !t.closest) return;
     if (t.closest(".baton-menu")) { e.preventDefault(); if (root.classList.contains("baton-drawer-open")) closeDrawer(); else openDrawer(); return; }
+    // Going to the Before you go page from the drawer: the drawer shuts, so the new page isn't covered.
+    if (narrow.matches && t.closest(".st-key-open-before-you-go button")) { closeDrawer(false); return; }
     var link = t.closest(".baton-nav a"); if (!link) return;
     var sec = link.getAttribute("data-sec") || "sec-3";
     active = sec; lockUntil = Date.now() + 1000; moveIndicator();

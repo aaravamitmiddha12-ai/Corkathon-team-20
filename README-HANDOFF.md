@@ -198,6 +198,11 @@ The owner then asked for a restyle in four parts. Where it changes a rule above,
   react to hover, because they aren't clickable and a hover would suggest they are. Notes got `tabindex="0"` so
   their hover effect also works from the keyboard.
 
+- **First screen:** the page opens on an overview that fills the screen (`overview()` in `ui/home.py`):
+  greeting, the handover title, four tiles (needs you, notes vs data, due first, handled; the last one updates
+  live), "Start with <first item>", and the three steps. The detail starts below it. Nothing on it is new
+  information; it's the page's own numbers gathered up front.
+
 How it's built: `ui/components.py` holds the CSS and `NAV_SCRIPT` (sidebar, drawer, reveals, chart draw, progress,
 Back to top, button pull, parallax); `ui/home.py`'s `TIMELINE_SCRIPT` handles the timeline and note hovers. The
 sidebar's dots and count update without a rerun through per-render CSS rules (`nav_state_rules`), the same trick

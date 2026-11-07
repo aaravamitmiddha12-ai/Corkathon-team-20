@@ -7,7 +7,7 @@ from src import record, respond, review, state
 from src.charts import OTHER_ROW, ROW_HEIGHT, TIMELINE_TOP, reading_chart, timeline
 from src.due import due_label
 from src.explain import evidence_rows
-from ui.components import (EASE, chip, esc, eyebrow, heading, heading_words, key_line, limit_bar, nav_state_rules, progress_caption,
+from ui.components import (EASE, chip, esc, eyebrow, heading, heading_words, key_line, slug, limit_bar, nav_state_rules, progress_caption,
                            progress_segments, reason_chips,
                            short_name, show, slug)
 
@@ -526,6 +526,50 @@ def responses_section(refresh) -> None:
     st.session_state["just_changed"] = None
 
 
+def greeting(hour: int) -> str:
+    return "Good morning" if hour < 12 else "Good afternoon" if hour < 17 else "Good evening"
+
+
+def overview(result, name: str) -> str:
+    """The first screen: four tiles that say what this handover holds, where to start, and how it works.
+    Nothing here is new information; it's the page's own numbers, gathered up front."""
+    shift, top = result.shift, result.top
+    n = len(top)
+    clashes = [i.asset_id for i in top if i.finding.clash]
+    dated = sorted((i for i in top if i.finding.due_by is not None), key=lambda i: i.finding.due_by)
+
+    clash_tile = (f'<div class="baton-tile{" clash" if clashes else ""}"><div class="k">Notes vs data</div>'
+                  f'<div class="v">{len(clashes)}</div>'
+                  f'<div class="c">{"notes said fine, the data kept alerting" if clashes else "notes and data agree"}</div></div>')
+    if dated:
+        first = dated[0]
+        text, overdue = due_label(first.finding.due_by, shift.handover)
+        left = text.split(" · ")[-1] if text else ""
+        due_tile = (f'<div class="baton-tile{" overdue" if overdue else ""}"><div class="k">Due first</div>'
+                    f'<div class="v mono">{first.finding.due_by:%a %H:%M}</div>'
+                    f'<div class="c"><span class="baton-mono">{esc(first.asset_id)}</span> · {esc(left)}</div></div>')
+    else:
+        due_tile = '<div class="baton-tile"><div class="k">Due first</div><div class="v">None</div><div class="c">no deadlines in this handover</div></div>'
+    tiles = (f'<div class="baton-tile"><div class="k">Needs you</div><div class="v">{n}</div>'
+             f'<div class="c">items, most urgent first</div></div>'
+             f'{clash_tile}{due_tile}'
+             f'<div class="baton-tile baton-tile-live"><div class="k">Handled</div><div class="v live"></div>'
+             f'<div class="baton-nav-track"><i class="baton-nav-fill"></i></div></div>')
+
+    start = (f'<a class="baton-cta" href="#card-{slug(top[0].asset_id)}" target="_self">Start with '
+             f'<span class="baton-mono">{esc(top[0].asset_id)}</span><span class="arr" aria-hidden="true">→</span></a>') if top else ""
+    steps = (f'<ol class="baton-steps"><li><span><b>Read</b> each item, most urgent first</span></li>'
+             f'<li><span><b>Respond</b>: Got it, dismiss with a reason, or draft a ticket</span></li>'
+             f'<li><span><b>Sign off</b> once all {n} are handled</span></li></ol>')
+    hello = f'{greeting(shift.handover.hour)}{", " + esc(name) if name else ""}.'
+    return (f'<div class="baton-overview">'
+            f'<p class="baton-lede">{hello} Here\'s what this handover needs from you.</p>'
+            f'<div class="baton-tiles">{tiles}</div>'
+            f'<div class="baton-actions">{start}'
+            f'<a class="baton-cta ghost" href="#sec-2" target="_self">See the shift at a glance</a></div>'
+            f'{steps}</div>')
+
+
 def render(result, refresh) -> None:
     """Five sections, each in its own keyed container so the page script can reveal it as it scrolls in.
     The numbers match the sidebar (ui/components.py, SECTIONS)."""
@@ -535,6 +579,7 @@ def render(result, refresh) -> None:
         show(eyebrow(1, "Start here", first=True))
         show(f'<div class="hc-header"><h1 class="baton-words">{heading_words(f"Baton · {shift.title}")}</h1></div>')
         show(f'<div class="hc-sub">From {esc(result.pack.outgoing_engineer)} · {esc(shift.id)} shift</div>')
+        show(overview(result, _name(shift.id)))
         if result.review_items and not result.review_complete:
             show('<div class="hc-banner"><b>Outgoing review not completed.</b> '
                  'The outgoing engineer hasn\'t said yet whether the flagged items are real issues.</div>')

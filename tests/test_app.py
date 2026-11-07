@@ -196,6 +196,15 @@ def test_every_anchor_target_exists():
     assert "Other (" in html
 
 
+def test_first_screen_is_an_overview_of_the_handover():
+    html = page_html(start())
+    assert "Good morning, S. O&#x27;Brien. Here" in html or "Good morning, S. O'Brien. Here" in html
+    assert '<div class="k">Needs you</div><div class="v">5</div>' in html
+    assert '<div class="k">Notes vs data</div><div class="v">2</div>' in html          # FRZ-12 and WFI-LOOP-1
+    assert '<div class="v mono">Sat 09:00</div>' in html and ">HPLC-07</span> · 2 h left" in html
+    assert 'class="baton-cta" href="#card-FRZ-12"' in html and "Sign off</b> once all 5 are handled" in html
+
+
 def test_sidebar_lists_every_section_and_the_top_items():
     html = page_html(start())
     for n in range(1, 6):
