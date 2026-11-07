@@ -1,0 +1,15 @@
+timestamp,system,asset,severity,message,acknowledged_by
+2026-11-06T19:22:00,BMS,AHU-4,info,Filter differential pressure 210 Pa (alarm 250 Pa),DMurphy
+2026-11-06T21:03:12,EMS,FRZ-12,high,Temperature -64.8C above alarm limit -70C,DMurphy
+2026-11-06T22:38:00,IT,PRN-QC-02,low,Toner empty,
+2026-11-06T23:14:40,EMS,FRZ-12,high,Temperature -63.1C above alarm limit -70C,DMurphy
+2026-11-07T01:27:55,BMS,CH-2-P3,medium,"Pump vibration 6.8 mm/s (warn 6.0, alarm 9.0)",
+2026-11-07T02:41:09,EMS,FRZ-12,high,Temperature -62.5C above alarm limit -70C,DMurphy
+2026-11-07T03:09:47,WFI-SCADA,WFI-LOOP-1,high,Conductivity 1.6 uS/cm exceeds limit 1.3 uS/cm (duration 6s),
+2026-11-07T03:52:20,WFI-SCADA,WFI-LOOP-1,high,Conductivity 1.5 uS/cm exceeds limit 1.3 uS/cm (duration 4s),
+2026-11-07T04:31:02,BMS,CH-2-P3,medium,"Pump vibration 7.4 mm/s (warn 6.0, alarm 9.0)",
+2026-11-07T04:58:33,WFI-SCADA,WFI-LOOP-1,high,Conductivity 1.4 uS/cm exceeds limit 1.3 uS/cm (duration 5s),
+2026-11-07T05:21:10,Access,DOOR-LAB-B,low,Door held open > 60s,DMurphy
+2026-11-07T05:58:00,BMS,CH-2-P3,medium,"Pump vibration 8.1 mm/s (warn 6.0, alarm 9.0)",
+2026-11-07T06:19:44,EMS,FRZ-12,high,Temperature -61.9C above alarm limit -70C,
+2026-11-07T06:30:00,EMS,FRZ-07,info,Scheduled defrost cycle complete,

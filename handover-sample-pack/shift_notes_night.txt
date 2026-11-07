@@ -1,0 +1,13 @@
+NIGHT SHIFT LOG - Utilities & QC Lab support - BrightLeaf Biologics (Cork site)
+Shift: Fri 6 Nov 19:00 -> Sat 7 Nov 07:00   Engineer: D. Murphy
+
+19:20 walked round, all quiet. HVAC AHU-4 filter dP a bit high, within limits, just noting.
+21:05 FRZ-12 (-80 freezer, QC retained samples) temp alarm. Reset it, temp came back down. Seems ok.
+22:40 printer in QC office out of toner again, left note for admin.
+23:15 FRZ-12 alarmed again, reset again, door was shut properly. Prob sensor? Will mention to day shift.
+01:30 chiller CH-2 pump 3 making a grinding noise on and off. Vibration looks a bit up. Will log it tmrw if it keeps going.
+03:10 WFI loop conductivity blipped, came straight back in spec. Didn't raise anything as it was only a few secs.
+04:00 HPLC-07 still down from yesterday, vendor engineer booked for this morning apparently. Lab said they need it for the batch 2611 release test.
+05:20 cleaners propped the lab B door open, alarm, closed it.
+06:10 BAL-03 balance calibration sticker says due today.
+06:45 handing over. Quiet enough night overall.

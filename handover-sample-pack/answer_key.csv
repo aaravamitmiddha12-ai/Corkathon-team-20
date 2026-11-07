@@ -1,0 +1,7 @@
+rank,item,why,evidence,action
+1,FRZ-12 freezer repeatedly out of limit,4 high alarms overnight and worsening (-64.8 to -61.9C); last one NOT acknowledged; holds GMP retained samples; note says 'seems ok',"alerts 21:03, 23:14, 02:41, 06:19 + note 21:05/23:15",Check now; move samples to backup freezer; raise ticket - no ticket exists
+2,WFI loop conductivity excursions not logged,"3 excursions above limit, not 1 'blip'; no ticket or deviation; site rule says log within 24h","alerts 03:09, 03:52, 04:58 + note 03:10",Inform QA and raise deviation before 03:09 tomorrow
+3,"HPLC-07 down, blocks batch 2611 release",P2 ticket due 09:00 today; vendor visit this morning,INC-4471 + note 04:00,Confirm vendor arrival; tell QC lab lead the expected fix time
+4,Chiller CH-2 pump 3 vibration trending to alarm,"6.8 -> 7.4 -> 8.1 mm/s, alarm at 9.0; no ticket ('will log it tmrw')","alerts 01:27, 04:31, 05:58 + note 01:30",Raise ticket now; ask maintenance to inspect before it trips
+5,BAL-03 calibration due today,Cannot be used after 17:00 today without calibration,CAL-0932 + note 06:10,Confirm metrology slot or tag balance out of use
+-,"Noise (mention, do not prioritise)",AHU-4 filter within limits with change booked; printer toner; door alarm closed; FRZ-07 routine defrost; resolved FRZ-09 ticket; LIMS patch tomorrow,,

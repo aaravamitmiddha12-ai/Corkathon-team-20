@@ -1,0 +1,43 @@
+{
+  "FRZ-12": {
+    "type": "-80C freezer",
+    "contents": "QC retained samples (GMP)",
+    "criticality": "high"
+  },
+  "WFI-LOOP-1": {
+    "type": "Water for Injection distribution loop",
+    "criticality": "high",
+    "rule": "any excursion must be logged as a deviation within 24h"
+  },
+  "CH-2-P3": {
+    "type": "Chiller pump",
+    "criticality": "medium",
+    "serves": "process cooling for production suite 2"
+  },
+  "HPLC-07": {
+    "type": "HPLC",
+    "criticality": "high",
+    "note": "only qualified instrument for batch release assay"
+  },
+  "BAL-03": {
+    "type": "Analytical balance",
+    "criticality": "medium",
+    "rule": "cannot be used after calibration due date"
+  },
+  "AHU-4": {
+    "type": "Air handling unit",
+    "criticality": "medium"
+  },
+  "PRN-QC-02": {
+    "type": "Printer",
+    "criticality": "low"
+  },
+  "DOOR-LAB-B": {
+    "type": "Access-controlled door",
+    "criticality": "low"
+  },
+  "FRZ-07": {
+    "type": "-80C freezer",
+    "criticality": "high"
+  }
+}
