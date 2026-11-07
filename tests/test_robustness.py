@@ -88,7 +88,7 @@ def frz_evidence():
 
 
 def good(why, headline="FRZ-12 freezer alarming", action="Check FRZ-12 now."):
-    return {"headline": headline, "why": why, "action": action, "citations": []}
+    return {"headline": headline, "bullets": [why], "action": action, "citations": []}
 
 
 @pytest.mark.parametrize("why", [

@@ -161,6 +161,7 @@ def test_template_explanations(result):
         ex = result.explanations[item.asset_id]
         assert ex["source"] == "template"
         assert len(ex["headline"].split()) <= MAX_HEADLINE_WORDS
-        assert ex["why"].endswith(".") and ex["action"].endswith(".")
+        assert 1 <= len(ex["bullets"]) <= 3 and all(b.strip() for b in ex["bullets"])
+        assert ex["action"].endswith(".")
         assert set(ex["citations"]) <= set(allowed_citations(build_evidence(item)))
         assert ex["citations"]

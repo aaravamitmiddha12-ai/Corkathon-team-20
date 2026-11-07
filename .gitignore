@@ -5,3 +5,8 @@ __pycache__/
 .env
 .streamlit/secrets.toml
 .claude/
+# Runtime state: created on first run, never committed
+data/state/*.json
+data/state/*.tmp
+data/state/records/*
+!data/state/records/.gitkeep

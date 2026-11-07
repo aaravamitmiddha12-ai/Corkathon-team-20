@@ -43,6 +43,25 @@ MANUAL_TAGS = {
         _tag("BAL-03", False, False),
     "06:45 handing over. Quiet enough night overall.":
         _tag(None, True, False),
+    # ----- day shift, Sat 07:00 -> 19:00 -----
+    "07:35 FRZ-12 checked with handheld probe, actual -79C. Display sensor is faulty, freezer itself fine. WO-1195 raised to replace the probe.":
+        _tag("FRZ-12", True, False),
+    "08:10 WFI loop: QA informed about last night's excursions, deviation DEV-2207 opened.":
+        _tag("WFI-LOOP-1", False, False),
+    "09:40 HPLC-07 vendor engineer on site, pump seal replaced, instrument back up. INC-4471 closed.":
+        _tag("HPLC-07", True, False),
+    "11:20 chiller CH-2 pump 3 still noisy, maintenance will look at it Monday. Seems stable.":
+        _tag("CH-2-P3", True, True),
+    "13:05 BAL-03 calibrated by Metrology, new sticker on.":
+        _tag("BAL-03", True, False),
+    "15:30 AHU-4 filter dP creeping up, still within limits.":
+        _tag("AHU-4", True, False),
+    "16:20 QC lab says incubator INC-2 door gasket is torn, they've taped it for now.":
+        _tag("INC-2", False, False),
+    "17:50 FRZ-12 still alarming from the bad probe, ignoring per WO-1195.":
+        _tag("FRZ-12", True, False),
+    "18:45 handing over. All under control.":
+        _tag(None, True, False),
 }
 
 # Used only for lines that aren't in MANUAL_TAGS (e.g. someone edits the notes file).

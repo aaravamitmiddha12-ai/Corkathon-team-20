@@ -2,42 +2,92 @@
   "FRZ-12": {
     "type": "-80C freezer",
     "contents": "QC retained samples (GMP)",
-    "criticality": "high"
+    "criticality": "high",
+    "measurement": "temperature",
+    "unit": "°C",
+    "alarm_limit": -70,
+    "direction": "above",
+    "readings": "continuous",
+    "rules": []
   },
   "WFI-LOOP-1": {
     "type": "Water for Injection distribution loop",
     "criticality": "high",
-    "rule": "any excursion must be logged as a deviation within 24h"
+    "measurement": "conductivity",
+    "unit": "µS/cm",
+    "alarm_limit": 1.3,
+    "direction": "above",
+    "readings": "events",
+    "rules": [{"type": "deviation_window_hours", "value": 24}]
   },
   "CH-2-P3": {
     "type": "Chiller pump",
     "criticality": "medium",
-    "serves": "process cooling for production suite 2"
+    "serves": "process cooling for production suite 2",
+    "measurement": "vibration",
+    "unit": "mm/s",
+    "alarm_limit": 9.0,
+    "warn_limit": 6.0,
+    "direction": "above",
+    "readings": "continuous",
+    "rules": []
   },
   "HPLC-07": {
     "type": "HPLC",
     "criticality": "high",
-    "note": "only qualified instrument for batch release assay"
+    "note": "only qualified instrument for batch release assay",
+    "rules": []
   },
   "BAL-03": {
     "type": "Analytical balance",
     "criticality": "medium",
-    "rule": "cannot be used after calibration due date"
+    "rules": [{"type": "unusable_after_calibration_due"}]
   },
   "AHU-4": {
     "type": "Air handling unit",
-    "criticality": "medium"
+    "criticality": "medium",
+    "measurement": "filter differential pressure",
+    "unit": "Pa",
+    "alarm_limit": 250,
+    "direction": "above",
+    "readings": "continuous",
+    "rules": []
   },
   "PRN-QC-02": {
     "type": "Printer",
-    "criticality": "low"
+    "criticality": "low",
+    "rules": []
   },
   "DOOR-LAB-B": {
     "type": "Access-controlled door",
-    "criticality": "low"
+    "criticality": "low",
+    "rules": []
   },
   "FRZ-07": {
     "type": "-80C freezer",
-    "criticality": "high"
+    "criticality": "high",
+    "measurement": "temperature",
+    "unit": "°C",
+    "alarm_limit": -70,
+    "direction": "above",
+    "readings": "continuous",
+    "rules": []
+  },
+  "CR-B2": {
+    "type": "Grade B cleanroom",
+    "criticality": "high",
+    "serves": "aseptic filling suite",
+    "measurement": "room pressure differential",
+    "unit": "Pa",
+    "alarm_limit": 10,
+    "warn_limit": 12,
+    "direction": "below",
+    "readings": "continuous",
+    "rules": []
+  },
+  "INC-2": {
+    "type": "QC incubator",
+    "criticality": "medium",
+    "rules": []
   }
 }

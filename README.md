@@ -1,14 +1,29 @@
 # Handover Check
 
 At shift change, Handover Check reads the outgoing shift's free-text notes, the machine
-alerts, the open tickets and the asset list. It shows the incoming engineer a ranked
-**top 5**: what needs attention first, why, and one action for each.
+alerts, the open tickets and the asset list. It shows the incoming engineer what needs
+attention first, why, and by when. It catches where the **notes contradict or understate the
+data** ("seems ok" while the freezer keeps alarming), and problems that have **no ticket**.
 
-Its key feature: it catches where the **notes contradict or understate the data**
-("seems ok" while the freezer keeps alarming), and problems that have **no ticket**.
+**Design principle:** plain, testable code decides the ranking. The LLM only (a) tags note
+lines and (b) writes the explanation text. A person responds to every item and signs off.
 
-**Design principle:** plain, testable code decides the ranking. The LLM only
-(a) tags note lines and (b) writes the explanation sentences. A human confirms each item.
+## The five features
+
+1. **Ranked handover with due-by times.** A top 5 with "Due by Sun 03:09 · 20 h left"
+   (red "Overdue by 2 h" when late), worked out from asset rules, ticket due dates and
+   calibration dates.
+2. **Notes vs data check.** Amber marks every place where a note said it was fine but a
+   medium or high alert came after it. Problems with no open ticket are tagged "No ticket".
+3. **Before you go.** The outgoing engineer reviews the clashes and missing tickets from their
+   shift ("It's fine - here's why" / "It's a real issue" / "I didn't know about this") and leaves
+   a one-line comment for the incoming engineer.
+4. **Respond.** Each card has **Got it**, **Dismiss with reason** and (for "No ticket" items)
+   **Draft ticket**. Dismissals carry forward to later handovers, and come back if things get worse.
+5. **Handover record.** When every top-5 item has a response, **Sign off handover** saves a
+   read-only record and offers a printable HTML download.
+
+There is nothing else: no login, upload, settings, history or chat.
 
 ---
 
@@ -24,134 +39,147 @@ python -m venv .venv            # macOS: python3 -m venv .venv
 pip install -r requirements.txt
 
 streamlit run app.py      # opens http://localhost:8501
-pytest                    # 53 tests, all offline
+pytest                    # 76 tests, all offline
 ```
 
-That's all you need for the demo. It runs **fully offline**: no API key and no network.
+The first time you run Streamlit it may ask for an email address in the terminal. Press Enter to skip.
+The app runs **fully offline** in demo mode: no API key and no network.
+
+### Reset the demo
+
+Responses, dismissals, reviews and sign-offs are saved in `data/state/` and survive restarts.
+To start again, delete `data/state/*.json` and the files in `data/state/records/`.
+They are recreated empty on the next run.
 
 ### Optional: live LLM
 
 ```bash
 # Windows PowerShell:  $env:ANTHROPIC_API_KEY = "sk-ant-..."
 # macOS/Linux:         export ANTHROPIC_API_KEY=sk-ant-...
-# optional, default claude-sonnet-5-5:
-#                      export LLM_MODEL=claude-sonnet-5-5
+# optional, default claude-sonnet-5-5:   LLM_MODEL=...
 
-python -m src.pipeline --llm   # calls the LLM once and fills cache/
+python -m src.pipeline --llm                 # Sat 07:00 handover: fills cache/
+python -m src.pipeline --llm --shift day     # Sat 19:00 handover
 ```
 
-After that, the app's default **demo mode** reads `cache/` and shows the LLM's tags and
-sentences without calling the API. That's the safe way to present: warm the cache
-before judging, then demo offline. The sidebar toggle **Use live LLM** allows real
-calls for anything not cached yet.
-
-Never put the key in code. It is read only from the `ANTHROPIC_API_KEY` environment variable.
+The app's default demo mode then reads `cache/` without calling the API. The sidebar toggle
+**Use live LLM** allows real calls for anything not cached yet. The key is only ever read from
+the `ANTHROPIC_API_KEY` environment variable.
 
 ---
 
-## 60-second demo script
+## Demo script (about 90 seconds)
+
+Start from a reset state (see above). "Sat 07:00 handover" is selected.
 
 | Time | Do | Say |
 |---|---|---|
-| 0:00 | App open. Point at the header. | "It's 07:00 Saturday. The night engineer wrote *'quiet enough night overall'*. Handover Check read the same notes plus 14 alerts, 6 tickets and the asset list." |
-| 0:10 | Point at the 3 amber note lines on the left. | "Amber means the note said it was fine, but the data kept alarming afterwards. *'Seems ok'* at 21:05, yet the freezer alarmed 3 more times." |
-| 0:20 | Card 1, FRZ-12. Read the tags. | "Top item: a -80 freezer with GMP samples. Four high alarms, each one warmer than the last. No ticket, and the latest alarm isn't acknowledged." |
-| 0:28 | Open **Evidence** on card 1. | "Every claim cites its source: these exact alerts and note lines. The score is plain arithmetic. You can see each step." |
-| 0:36 | Card 2, WFI loop. | "The notes call it 'a blip'. The data shows **three** excursions, no ticket, and a site rule saying it must be logged as a deviation within 24 hours." |
-| 0:44 | Card 3 + sidebar sparkline for CH-2-P3. | "Chiller pump vibration is climbing toward its alarm line. The note says 'will log it tomorrow', so there's no ticket yet." |
-| 0:50 | Click **Got it** on card 1. | "The engineer confirms each item. The tool ranks; a person decides." |
-| 0:55 | Point at the badge, then open **Checked, not urgent**. | "It finds all five of the expert's items. The only difference is the order of the chiller and the HPLC. The noise (printer toner, a door alarm, a routine defrost) is pushed down, never deleted." |
+| 0:00 | Point at the timeline and the notes. | "07:00 Saturday. The night engineer wrote *'quiet enough night overall'*. Amber dots are alerts that came **after** a note said it was fine." |
+| 0:12 | Card 1, FRZ-12. | "A -80 freezer with GMP samples: 4 alarms, each warmer than the last, and no ticket. The notes said 'seems ok'." |
+| 0:20 | Card 2, WFI loop. Point at "Due by Sun 03:09 · 20 h left". Open **Evidence**. | "The notes call it a blip. The data shows three separate excursions. The site rule gives 24 hours to log a deviation, so it's due by 03:09 tomorrow. Every claim cites its source in this table, and the chart shows each excursion." |
+| 0:35 | Card 3, CH-2-P3: **Draft ticket**. | "Vibration is climbing toward the alarm line with no ticket. One click drafts the ticket with the evidence attached." |
+| 0:45 | Card 1: **Dismiss with reason** → Known sensor or instrument fault, 24 hours. Card 3: **Dismiss** → Already handled, 24 hours. **Got it** on the rest. **Sign off handover**. | "Every item needs a response before sign-off. The record is saved and printable." |
+| 1:05 | Switch to **Sat 19:00 handover**. | "Twelve hours later. FRZ-12 kept alarming at the same values. It was dismissed as a sensor fault, so it carries over quietly, at the bottom with who dismissed it and why." |
+| 1:15 | Card 1, CH-2-P3: the red box. | "The chiller was dismissed too, but it got **worse**: 8.9 against 8.1 mm/s. The dismissal is ignored and it's back on top." |
+| 1:25 | **Outgoing engineer? Before you go →** | "Before leaving, the day engineer sees what they wrote next to what the data shows, and says whether it's real. That comment appears on the incoming engineer's card." |
 
 ---
 
 ## How it works
 
 ```
-handover-sample-pack/  ->  load.py  ->  tag_notes.py  ->  detect.py  ->  score.py  ->  explain.py  ->  app.py
-                                         (LLM or manual)   (rules)       (weights)     (LLM or template)
-                                                                                         evaluate.py -> badge
+handover-sample-pack/  ->  load  ->  tag_notes  ->  detect + due  ->  score  ->  explain  ->  ui/
+ (night)  day_shift/       (shifts)  (LLM/manual)    (rules)          (weights)   (LLM/template)
+                                       data/state/ (reviews, responses, dismissals) feeds score
 ```
 
 | Module | Job |
 |---|---|
-| `src/load.py` | Reads the 5 input files into pandas. Note times before 07:00 belong to Sat 7 Nov. "Now" = 2026-11-07 07:00. |
-| `src/tag_notes.py` | Each note line becomes `{asset_id, reassuring, mentions_future_action}`. `MANUAL_TAGS` is a hand-written dict; the LLM version uses the same function and caches to `cache/tags.json`. |
-| `src/detect.py` | Plain rules per asset: repeats, trend_worsening, near_limit, no_open_ticket, clash, unacknowledged_latest, due_today. |
-| `src/score.py` | The weighted score. All weights are in one `WEIGHTS` dict at the top. Top 5 + "Checked, not urgent". Nothing is dropped. |
-| `src/explain.py` | Headline / why / action / citations per top item. The LLM sees **only that item's evidence**. Falls back to a template. Caches to `cache/explanations.json`. |
-| `src/evaluate.py` | Compares our top 5 with `answer_key.csv` (matches x/5 + rank agreement). The ranking never sees the answer key. |
-| `src/pipeline.py` | Runs everything once. Used by the app, the tests and the command line. |
-| `src/llm.py` | The one place that calls the Anthropic API, plus the JSON cache. |
+| `src/load.py` | Reads one shift's files into pandas. Defines the two shifts (`night`: Sat 07:00 handover, `day`: Sat 19:00 handover). |
+| `src/tag_notes.py` | Each note line becomes `{asset_id, reassuring, mentions_future_action}`. Hand-written tags for both sample shifts; the LLM version uses the same function and caches to `cache/tags.json`. |
+| `src/detect.py` | Plain rules per asset: repeats, getting worse, near limit, no ticket, clash, not acknowledged, due soon, rule breaches. Limits, units and direction come from `assets.json`. |
+| `src/due.py` | Due-by: the earliest of an asset rule (e.g. first excursion + 24 h deviation window) and live ticket due dates (including calibration). |
+| `src/score.py` | The weighted score (all weights in one `WEIGHTS` dict), top 5 and the rest. Nothing is dropped. |
+| `src/explain.py` | Headline, 2-3 bullets and one action per item. The LLM sees **only that item's evidence**. Falls back to a template. |
+| `src/review.py` | "Before you go" reviews (`data/state/outgoing_reviews.json`). |
+| `src/respond.py` | Got it / Dismiss / Draft ticket (`responses.json`, `dismissals.json`) and the carry-forward rules. |
+| `src/record.py` | Sign-off: a JSON record and a printable HTML page in `data/state/records/`. |
+| `src/charts.py` | Plotly charts: the shift timeline and each card's reading chart. |
+| `src/evaluate.py` | Compares the Sat 07:00 top 5 with `answer_key.csv`. The ranking never sees the answer key. |
+| `ui/`, `app.py` | The Streamlit screens: home and "Before you go". |
 
 ### The score
 
 ```
 base = criticality(low 1, medium 2, high 3) x severity(info 0.5, low 1, medium 2, high 3)
-       x (1 + 0.5 x (alerts - 1))                       (0 if the asset had no alerts)
-x1.5 if trend_worsening
-+50 clash   +40 no_open_ticket   +30 due_today   +20 near_limit   +15 unacknowledged_latest
+       x (1 + 0.5 x (alerts - 1))                     (0 if the asset had no alerts)
+x1.5 if getting worse
++50 clash   +40 no ticket   +30 due before the end of the incoming shift
++20 close to alarm limit   +15 latest alert not acknowledged
++20 if the outgoing engineer said "It's a real issue"   ("It's fine" never lowers the score)
+x0.3 if an earlier dismissal still applies (and it can't be in the top 5)
 ```
 
-Severity is the asset's highest alert severity. Assets that appear in tickets but not in
-`assets.json` (FRZ-09, LIMS) count as low criticality.
+### Carry-forward rules for dismissals
+
+A dismissal is saved per asset with the worst reading at that time and the rule breaches that
+were already known. At a **later** handover:
+
+- **Still applies** (not expired, and no worse): score x0.3. The item moves to "Carried over from
+  last handover" with a grey line: *Previously dismissed: reason · who · when*.
+- **Now worse**: the latest reading is worse than the worst reading when it was dismissed, or a
+  new rule breach appeared (past the alarm or warning limit, or overdue). The dismissal is
+  ignored, the item ranks normally and the card says **"Dismissed earlier, now worse"**.
+- **Expired**: "This handover only", 24 hours after the handover it was made at, or "Until a
+  ticket is closed" once the referenced ticket is closed or resolved.
+
+Expiry runs on the handover clock (the dismissal was made at the Sat 07:00 handover), so the demo
+behaves the same on any day. Responses and sign-offs record the real time.
 
 ### Rule details (decisions we made, and why)
 
-- **clash** needs a **medium or high** alert after the reassuring note. Without this, AHU-4
-  would be a false clash: the note at 19:20 said "within limits", and an *info* reading
-  logged 2 minutes later says the same thing. The door alarm (low) after "closed it" is also
-  not a clash.
-- **no_open_ticket** fires when something is wrong (a medium+ alert, **or a note that raises
-  a concern**, i.e. is not reassuring) and there is no open, scheduled or approved ticket. A
-  reassuring note on its own ("cleaners propped the door open... closed it") doesn't need a ticket.
-- **trend_worsening** means each reading is worse than the one before. For a ceiling limit,
-  that means higher. This covers both "further past the limit" (FRZ-12) and "heading toward
-  the limit" (CH-2-P3). WFI went 1.6 -> 1.5 -> 1.4: still over the limit, but not worsening.
-- **near_limit** means the latest reading is within 15% of the alarm limit and **not yet past
-  it** (CH-2-P3: 8.1 vs 9.0). Readings already past the limit are covered by severity.
-- **due_today** only counts live tickets (open / scheduled / approved).
+- **clash** needs a **medium or high** alert after the reassuring note. Otherwise an info reading
+  logged 2 minutes after "within limits" (AHU-4) would count as a contradiction.
+- **no ticket** fires when something is wrong (a medium+ alert, or a note that raises a concern)
+  and there's no open, scheduled or approved ticket.
+- **getting worse** means each reading is worse than the one before, on the side `assets.json`
+  marks as bad (`direction`: above or below). CR-B2's pressure falling 11.2 → 10.4 → 9.6 Pa
+  against a 10 Pa floor is getting worse.
+- **near limit** means within 15% of the alarm limit and not yet past it.
+- **Charts:** amber is used only for "notes say OK, data disagrees". The spec asked for an amber
+  warning line too, so we drew the warning level in **orange** to keep amber's single meaning.
+  WFI excursions are short separate events, so they're drawn as separate spikes from the limit
+  line, never joined up.
 
-### Result against the expert
-
-| | Expert | Handover Check | Score |
-|---|---|---|---|
-| 1 | FRZ-12 | FRZ-12 | 138.75 |
-| 2 | WFI-LOOP-1 | WFI-LOOP-1 | 123 |
-| 3 | HPLC-07 | CH-2-P3 | 87 |
-| 4 | CH-2-P3 | HPLC-07 | 30 |
-| 5 | BAL-03 | BAL-03 | 30 |
+### Result against the expert (Sat 07:00 handover)
 
 **5/5 of the expert's items, 3/5 in the same position, rank agreement (Spearman) 0.90.**
-The one swap is a good talking point. The formula ranks the chiller above the HPLC because
-the chiller is getting worse with no owner. The HPLC already has a P2 ticket and a vendor
-booked, and the expert ranked it higher because it blocks a batch release. We did not tune
-the weights to force the order.
+The one swap: the formula ranks the chiller (getting worse, no owner) above the HPLC (already
+ticketed, vendor booked). The expert ranked the HPLC higher because it blocks a batch release.
+We did not tune the weights to force the order. The Sat 19:00 shift has no expert answer key,
+so the badge is hidden there.
 
 ### LLM guard rails
 
-- Structured outputs: the API must return JSON that matches our schema.
-- Current Claude models no longer accept a `temperature` setting, so we don't send one.
-  Results stay stable because of the strict schema plus the cache.
-- Tagging: an `asset_id` the LLM returns that isn't a known asset becomes `null`.
-- Explanations: citations that aren't in the evidence are dropped. If the text contains a
-  **number that isn't in the evidence** (signs count; dates and ids don't vouch for numbers),
-  or claims **more alerts than there were**, the answer is rejected and the template is shown.
-  This is a light check, not a proof: it catches invented values, not every wrong sentence.
-- Any failure (no key, offline, rate limit, refusal) falls back to manual tags or templates,
-  with a short notice in the app. The app never crashes because of the LLM.
-- On supported models, the request opts into the API's server-side refusal fallback.
+- Structured outputs: the API must return JSON that matches our schema. Current Claude models
+  don't accept `temperature`, so results are kept stable by the schema and the cache.
+- Explanations: citations that aren't in the evidence are dropped. If the text uses a number
+  that isn't in the evidence (signs count; dates and ids don't vouch for numbers), or claims
+  more alerts than there were, the answer is rejected and the template is shown.
+- Any failure (no key, offline, rate limit, refusal) falls back to manual tags or templates.
 
 ---
 
 ## Project layout
 
 ```
-app.py                     Streamlit screen
-src/                       pipeline modules (see table above)
-tests/test_pipeline.py     ranking + rule tests (manual tags, no API)
-tests/test_llm.py          LLM path with a fake model (no network)
-tests/test_robustness.py   odd data (blank cells, unknown severities, bad cache files) + the number guard
-handover-sample-pack/      input data + answer key
-cache/                     LLM answers (created by `python -m src.pipeline --llm`)
-.streamlit/config.toml     theme colour
+app.py                         Streamlit entry point (shift selector, routing)
+ui/home.py                     home screen: timeline, notes, cards, lists, sign-off
+ui/before_you_go.py            the outgoing engineer's review page
+ui/components.py               CSS, tags, the colour key
+src/                           pipeline modules (see table above)
+handover-sample-pack/          Sat 07:00 handover data + answer key + assets.json
+handover-sample-pack/day_shift Sat 19:00 handover data (carry-forward demo)
+data/state/                    saved reviews, responses, dismissals, records (not committed)
+tests/                         76 offline tests, including UI tests with Streamlit's AppTest
 ```

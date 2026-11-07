@@ -1,4 +1,9 @@
-"""Step 1: load the sample pack into clean pandas DataFrames."""
+"""Load a shift's sample pack into clean pandas DataFrames.
+
+Two sample shifts:
+  "night"  Fri 6 Nov 19:00 -> Sat 7 Nov 07:00, handed over at Sat 07:00
+  "day"    Sat 7 Nov 07:00 -> Sat 7 Nov 19:00, handed over at Sat 19:00
+"""
 
 import json
 import re
@@ -10,14 +15,40 @@ import pandas as pd
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "handover-sample-pack"
 
-# The demo's "now": the 07:00 handover on Sat 7 Nov 2026.
-NOW = pd.Timestamp("2026-11-07 07:00")
 
-# The night shift runs Fri 6 Nov 19:00 -> Sat 7 Nov 07:00.
-SHIFT_FIRST_DAY = pd.Timestamp("2026-11-06")
-SHIFT_END_HOUR = 7  # note times before 07:00 belong to the second day
+@dataclass(frozen=True)
+class Shift:
+    id: str
+    label: str              # what the shift selector shows
+    start: pd.Timestamp     # when the outgoing shift began
+    handover: pd.Timestamp  # "now" for this handover
+    data_dir: Path
+    notes_file: str
+    incoming_engineer: str  # default name for the person taking over
+
+    @property
+    def incoming_end(self) -> pd.Timestamp:
+        """End of the incoming shift (12-hour shifts)."""
+        return self.handover + pd.Timedelta(hours=12)
+
+    @property
+    def title(self) -> str:
+        return f"{self.handover:%a} {self.handover.day} {self.handover:%b}, {self.handover:%H:%M} handover"
+
+
+SHIFTS = {
+    "night": Shift("night", "Sat 07:00 handover", pd.Timestamp("2026-11-06 19:00"), pd.Timestamp("2026-11-07 07:00"),
+                   DATA_DIR, "shift_notes_night.txt", "S. O'Brien"),
+    "day": Shift("day", "Sat 19:00 handover", pd.Timestamp("2026-11-07 07:00"), pd.Timestamp("2026-11-07 19:00"),
+                 DATA_DIR / "day_shift", "shift_notes_day.txt", "K. Walsh"),
+}
+DEFAULT_SHIFT = "night"
+
+# Kept for older code and tests: the first sample's handover moment.
+NOW = SHIFTS["night"].handover
 
 NOTE_LINE = re.compile(r"^(\d{1,2}):(\d{2})\s+(.+)$")
+ENGINEER = re.compile(r"Engineer:\s*(.+?)\s*$", re.MULTILINE)
 
 SEVERITIES = ["info", "low", "medium", "high"]
 SEVERITY_ALIASES = {"critical": "high", "warning": "medium", "warn": "medium", "": "info"}
@@ -41,18 +72,20 @@ class Pack:
     alerts: pd.DataFrame
     tickets: pd.DataFrame
     assets: pd.DataFrame
-    answer_key: pd.DataFrame
+    answer_key: pd.DataFrame  # empty when the shift has no expert answer key
+    shift: Shift
+    outgoing_engineer: str
 
 
-def note_timestamp(hour: int, minute: int) -> pd.Timestamp:
-    """Turn an HH:MM from the night log into a full timestamp."""
-    day = SHIFT_FIRST_DAY
-    if hour < SHIFT_END_HOUR:
-        day += pd.Timedelta(days=1)
-    return day + pd.Timedelta(hours=hour, minutes=minute)
+def note_timestamp(hour: int, minute: int, shift_start: pd.Timestamp = SHIFTS["night"].start) -> pd.Timestamp:
+    """Turn an HH:MM from a shift log into a full timestamp. Times earlier than the shift start are the next day."""
+    t = shift_start.normalize() + pd.Timedelta(hours=hour, minutes=minute)
+    if t < shift_start:
+        t += pd.Timedelta(days=1)
+    return t
 
 
-def load_notes(path: Path) -> pd.DataFrame:
+def load_notes(path: Path, shift_start: pd.Timestamp = SHIFTS["night"].start) -> pd.DataFrame:
     """One row per timed note line. Header lines (no HH:MM) are skipped."""
     rows = []
     for raw in path.read_text(encoding="utf-8").splitlines():
@@ -64,12 +97,17 @@ def load_notes(path: Path) -> pd.DataFrame:
         rows.append(
             {
                 "time": f"{hour:02d}:{minute:02d}",
-                "timestamp": note_timestamp(hour, minute),
+                "timestamp": note_timestamp(hour, minute, shift_start),
                 "text": text,
                 "line": line,  # the full line, used as the tag cache key
             }
         )
     return pd.DataFrame(rows, columns=["time", "timestamp", "text", "line"])
+
+
+def engineer_name(path: Path) -> str:
+    match = ENGINEER.search(path.read_text(encoding="utf-8"))
+    return match[1] if match else "Outgoing engineer"
 
 
 def load_alerts(path: Path) -> pd.DataFrame:
@@ -92,7 +130,7 @@ def load_tickets(path: Path) -> pd.DataFrame:
 
 
 def load_assets(path: Path) -> pd.DataFrame:
-    """One row per asset. `details` holds every field from the JSON (type, rule, notes...)."""
+    """One row per asset. `details` holds every field from the JSON (type, rules, unit, limits...)."""
     raw = json.loads(path.read_text(encoding="utf-8"))
     rows = [
         {
@@ -107,14 +145,30 @@ def load_assets(path: Path) -> pd.DataFrame:
 
 
 def load_answer_key(path: Path) -> pd.DataFrame:
+    if not path.exists():
+        return pd.DataFrame(columns=["rank", "item", "why", "evidence", "action"], dtype=str)
     return pd.read_csv(path, dtype=str, keep_default_na=False)
 
 
-def load_all(data_dir: Path = DATA_DIR) -> Pack:
+def _find_assets_file(data_dir: Path) -> Path:
+    """A shift folder can have its own assets.json, or share its parent's."""
+    for folder in (data_dir, data_dir.parent):
+        if (folder / "assets.json").exists():
+            return folder / "assets.json"
+    raise FileNotFoundError(f"no assets.json in {data_dir} or its parent")
+
+
+def load_all(data_dir: Path | None = None, shift: str | Shift = DEFAULT_SHIFT) -> Pack:
+    """Load one shift. `data_dir` overrides the shift's folder (used by tests with a copied pack)."""
+    s = SHIFTS[shift] if isinstance(shift, str) else shift
+    folder = Path(data_dir) if data_dir else s.data_dir
+    notes_path = folder / s.notes_file
     return Pack(
-        notes=load_notes(data_dir / "shift_notes_night.txt"),
-        alerts=load_alerts(data_dir / "alerts.csv"),
-        tickets=load_tickets(data_dir / "tickets.csv"),
-        assets=load_assets(data_dir / "assets.json"),
-        answer_key=load_answer_key(data_dir / "answer_key.csv"),
+        notes=load_notes(notes_path, s.start),
+        alerts=load_alerts(folder / "alerts.csv"),
+        tickets=load_tickets(folder / "tickets.csv"),
+        assets=load_assets(_find_assets_file(folder)),
+        answer_key=load_answer_key(folder / "answer_key.csv"),
+        shift=s,
+        outgoing_engineer=engineer_name(notes_path),
     )

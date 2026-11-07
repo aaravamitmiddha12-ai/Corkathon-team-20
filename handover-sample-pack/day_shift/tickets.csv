@@ -1,0 +1,9 @@
+id,opened,asset,priority,status,due,assignee,summary
+INC-4471,2026-11-06T10:05,HPLC-07,P2,closed,2026-11-07T09:00,Vendor (Agilex),"HPLC-07 pump pressure fault, instrument down. Needed for batch 2611 release testing."
+CAL-0932,2026-10-08T00:00,BAL-03,P3,closed,2026-11-07T17:00,Metrology,Quarterly calibration of analytical balance BAL-03
+INC-4465,2026-11-05T14:20,PRN-QC-02,P4,open,2026-11-12T17:00,IT Service Desk,QC office printer toner replacement
+WO-1180,2026-11-02T09:00,AHU-4,P4,scheduled,2026-11-20T17:00,Facilities,Planned filter change AHU-4
+INC-4459,2026-11-04T08:10,FRZ-09,P3,resolved,2026-11-06T17:00,Facilities,FRZ-09 door seal replaced
+CHG-0211,2026-11-03T11:00,LIMS,P3,approved,2026-11-08T22:00,IT Apps,LIMS patch window Sun 22:00-02:00
+WO-1195,2026-11-07T07:40,FRZ-12,P3,open,2026-11-09T17:00,Facilities,Replace faulty FRZ-12 display temperature probe
+DEV-2207,2026-11-07T08:10,WFI-LOOP-1,P2,open,2026-11-08T03:09,QA,"Deviation: WFI-LOOP-1 conductivity excursions 7 Nov 03:09, 03:52, 04:58"

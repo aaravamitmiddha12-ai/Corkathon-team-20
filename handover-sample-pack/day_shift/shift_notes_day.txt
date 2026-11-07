@@ -1,0 +1,12 @@
+DAY SHIFT LOG - Utilities & QC Lab support - BrightLeaf Biologics (Cork site)
+Shift: Sat 7 Nov 07:00 -> Sat 7 Nov 19:00   Engineer: S. O'Brien
+
+07:35 FRZ-12 checked with handheld probe, actual -79C. Display sensor is faulty, freezer itself fine. WO-1195 raised to replace the probe.
+08:10 WFI loop: QA informed about last night's excursions, deviation DEV-2207 opened.
+09:40 HPLC-07 vendor engineer on site, pump seal replaced, instrument back up. INC-4471 closed.
+11:20 chiller CH-2 pump 3 still noisy, maintenance will look at it Monday. Seems stable.
+13:05 BAL-03 calibrated by Metrology, new sticker on.
+15:30 AHU-4 filter dP creeping up, still within limits.
+16:20 QC lab says incubator INC-2 door gasket is torn, they've taped it for now.
+17:50 FRZ-12 still alarming from the bad probe, ignoring per WO-1195.
+18:45 handing over. All under control.

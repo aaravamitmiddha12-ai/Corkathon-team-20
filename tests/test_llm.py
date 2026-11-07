@@ -63,7 +63,7 @@ def test_good_llm_explanation_is_used_and_bad_citations_dropped(monkeypatch, tem
     item = _top_item()
     monkeypatch.setattr(llm, "ask_json", lambda *a, **k: {
         "headline": "Freezer FRZ-12 keeps alarming; notes say fine",
-        "why": "Four high alarms rose from -64.8C to -61.9C after the 21:05 note said it seemed ok.",
+        "bullets": ["Four high alarms rose from -64.8C to -61.9C after the 21:05 note said it seemed ok."],
         "action": "Move the retained samples to a backup freezer and raise a ticket.",
         "citations": ["alert 21:03", "alert 06:19", "note 21:05", "INC-9999"],
     })
@@ -83,7 +83,7 @@ def test_llm_explanation_with_invented_number_is_rejected(monkeypatch):
     item = _top_item()
     monkeypatch.setattr(llm, "ask_json", lambda *a, **k: {
         "headline": "Freezer at -55C",
-        "why": "It reached -55C.",
+        "bullets": ["It reached -55C."],
         "action": "Check it.",
         "citations": [],
     })
@@ -96,7 +96,7 @@ def test_headline_is_trimmed_to_ten_words(monkeypatch):
     item = _top_item()
     monkeypatch.setattr(llm, "ask_json", lambda *a, **k: {
         "headline": "one two three four five six seven eight nine ten eleven twelve",
-        "why": "Notes said ok.", "action": "Check it.", "citations": ["note 21:05"],
+        "bullets": ["Notes said ok."], "action": "Check it.", "citations": ["note 21:05"],
     })
     out, _ = explain.explain_all([item], mode="llm")
     assert len(out["FRZ-12"]["headline"].split()) == 10

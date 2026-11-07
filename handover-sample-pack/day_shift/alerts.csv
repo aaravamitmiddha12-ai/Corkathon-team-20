@@ -1,0 +1,13 @@
+timestamp,system,asset,severity,message,acknowledged_by
+2026-11-07T08:50:12,EMS,FRZ-12,high,Temperature -62.6C above alarm limit -70C,SOBrien
+2026-11-07T10:15:40,BMS,CH-2-P3,medium,"Pump vibration 8.3 mm/s (warn 6.0, alarm 9.0)",SOBrien
+2026-11-07T12:30:05,EMS,FRZ-12,high,Temperature -62.2C above alarm limit -70C,SOBrien
+2026-11-07T13:40:22,BMS,CH-2-P3,medium,"Pump vibration 8.6 mm/s (warn 6.0, alarm 9.0)",
+2026-11-07T14:12:00,BMS,CR-B2,medium,Room pressure differential 11.2 Pa (alarm below 10 Pa),
+2026-11-07T14:41:30,BMS,CR-B2,medium,Room pressure differential 10.4 Pa (alarm below 10 Pa),
+2026-11-07T15:05:10,BMS,CR-B2,high,Room pressure differential 9.6 Pa (alarm below 10 Pa),
+2026-11-07T15:28:00,BMS,AHU-4,info,Filter differential pressure 228 Pa (alarm 250 Pa),SOBrien
+2026-11-07T16:10:44,EMS,FRZ-12,high,Temperature -62.0C above alarm limit -70C,SOBrien
+2026-11-07T16:55:18,BMS,CH-2-P3,medium,"Pump vibration 8.9 mm/s (warn 6.0, alarm 9.0)",
+2026-11-07T17:30:00,EMS,FRZ-07,info,Scheduled defrost cycle complete,
+2026-11-07T18:02:33,Access,DOOR-LAB-B,low,Door held open > 60s,SOBrien

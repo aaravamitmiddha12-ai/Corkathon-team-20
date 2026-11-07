@@ -1,8 +1,8 @@
-"""Step 5: write a headline, a "why" sentence and one action for each top-5 item.
+"""Write a headline, 2-3 short "why" bullets and one action for each item.
 
 The LLM sees ONLY that item's evidence and must not invent values. We check its
 answer: unknown citations are dropped, and if it uses a number that isn't in the
-evidence we throw the answer away and use the template instead.
+evidence (or claims more alerts than there were) we use the template instead.
 
 Modes match tag_notes: "manual" (template only), "demo" (cache, else template),
 "llm" (cache, else ask the LLM and cache it, else template).
@@ -12,13 +12,16 @@ import hashlib
 import json
 import re
 
+import pandas as pd
+
 from src import llm
-from src.detect import past_limit
-from src.load import NOW, fmt_time
+from src.load import fmt_time
 from src.score import REASON_LABELS, ScoredItem
 
 CACHE_FILE = "explanations.json"
 MAX_HEADLINE_WORDS = 10
+MAX_BULLETS = 3
+
 # Numbers not glued to a name ("FRZ-12", "P2"). Dates are removed first, so "2026-11-07" can't vouch for 11 or 7.
 NUMBER = re.compile(r"(?<![\w.-])-?\d+(?:\.\d+)?")
 DATE = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -26,6 +29,41 @@ COUNT_WORDS = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "
                "nine": 9, "ten": 10}
 ALERT_COUNT = re.compile(r"\b(\d+|" + "|".join(COUNT_WORDS) + r")\s+(?:\w+\s+)?(?:alerts?|alarms?|excursions?)\b",
                          re.IGNORECASE)
+
+
+# ---------- small formatting helpers ----------
+
+def value_with_unit(value: float, unit: str) -> str:
+    return f"{value:g} {unit}".strip()
+
+
+def join_times(times: list[str]) -> str:
+    return times[0] if len(times) == 1 else ", ".join(times[:-1]) + " and " + times[-1]
+
+
+def rule_text(rule: dict) -> str:
+    """Plain-language version of a structured asset rule."""
+    kind = rule.get("type")
+    if kind == "deviation_window_hours":
+        return f"every excursion must be logged as a deviation within {rule.get('value', 24)} h"
+    if kind == "unusable_after_calibration_due":
+        return "it can't be used after its calibration is due"
+    return str(kind or "").replace("_", " ")
+
+
+def latest_past_limit(f) -> bool:
+    return f.latest_value is not None and f.limit is not None and f.is_worse(f.latest_value, f.limit)
+
+
+def short_type(f) -> str:
+    """The asset type, but only if it's short enough for a headline ("Chiller pump", not "Water for ...")."""
+    if not f.asset_type or len(f.asset_type.split()) > 2 or f.asset_type.lower() in f.asset_id.lower():
+        return ""  # too long, or it just repeats the id ("HPLC-07 HPLC")
+    return f.asset_type
+
+
+def _alarm_word(f) -> str:
+    return "alarms" if f.max_severity == "high" else "alerts"
 
 
 # ---------- evidence: the only facts an explanation may use ----------
@@ -44,10 +82,12 @@ def reason_details(item: ScoredItem) -> list[str]:
             out.append(f"{label}: readings {' -> '.join(f'{v:g}' for _, v in f.values)}")
         elif r == "near_limit":
             out.append(f"{label}: latest {f.values[-1][1]:g} vs alarm limit {f.limit:g}")
-        elif r == "due_today":
-            out.append(f"{label}: {', '.join(f.due_ticket_ids)} due {NOW:%d %b}")
+        elif r == "due_soon":
+            out.append(f"{label}: due by {fmt_time(f.due_by, '%Y-%m-%d %H:%M')} ({f.due_by_source})")
         elif r == "unacknowledged_latest":
             out.append(f"{label}: latest alert at {f.alerts.iloc[-1]['time']} has no acknowledgement")
+        elif r == "outgoing_real_issue":
+            out.append(f"{label}: the outgoing engineer marked this as a real issue")
         elif r == "repeated":
             out.append(f"{label}: {f.repeats} alerts this shift")
     return out
@@ -55,10 +95,12 @@ def reason_details(item: ScoredItem) -> list[str]:
 
 def build_evidence(item: ScoredItem) -> dict:
     f = item.finding
-    return {
-        "handover_time": f"{NOW:%Y-%m-%d %H:%M}",
+    details = {k: v for k, v in f.details.items() if k != "rules"}
+    evidence = {
+        "handover_time": fmt_time(f.now, "%Y-%m-%d %H:%M"),
         "asset_id": f.asset_id,
-        "asset": f.details or {"note": "not in the asset list"},
+        "asset": details or {"note": "not in the asset list"},
+        "site_rules": [rule_text(r) for r in f.rules],
         "alert_count": f.repeats,
         "alerts": [
             {"cite": f"alert {a['time']}", "timestamp": fmt_time(a["timestamp"], "%Y-%m-%d %H:%M"),
@@ -76,100 +118,181 @@ def build_evidence(item: ScoredItem) -> dict:
              "due": fmt_time(t["due"], "%Y-%m-%d %H:%M"), "assignee": t["assignee"], "summary": t["summary"]}
             for _, t in f.tickets.iterrows()
         ],
+        "due_by": fmt_time(f.due_by, "%Y-%m-%d %H:%M") if f.due_by is not None else None,
         "fired_reasons": reason_details(item),
     }
+    if item.review:
+        evidence["outgoing_engineer_review"] = {"choice": item.review.get("choice"),
+                                                "comment": item.review.get("comment", "")}
+    return evidence
 
 
 def allowed_citations(evidence: dict) -> list[str]:
     return [x["cite"] for key in ("alerts", "notes", "tickets") for x in evidence[key]]
 
 
-# ---------- template fallback (no API key needed) ----------
+def evidence_rows(item: ScoredItem, cited: list[str] | None = None) -> list[tuple[str, str, str]]:
+    """The evidence as a small table: (Time, Source, What). Only cited rows if `cited` is given."""
+    f = item.finding
+    keep = set(cited) if cited else None
+    timed = []
+    for _, a in f.alerts.iterrows():
+        if keep is None or f"alert {a['time']}" in keep:
+            ack = f"ack {a['acknowledged_by']}" if a["acknowledged_by"] else "not acknowledged"
+            timed.append((a["timestamp"], a["time"], f"Alert · {a['system']}",
+                          f"{a['severity'].capitalize()}: {a['message']} ({ack})"))
+    for _, n in f.notes.iterrows():
+        if keep is None or f"note {n['time']}" in keep:
+            timed.append((n["timestamp"], n["time"], "Shift note", n["text"]))
+    timed.sort(key=lambda r: (pd.isna(r[0]), r[0] if not pd.isna(r[0]) else pd.Timestamp.min))
+    rows = [(t, s, w) for _, t, s, w in timed]
+    for _, t in f.tickets.iterrows():
+        if keep is None or t["id"] in keep:
+            due = fmt_time(t["due"], "%a %H:%M") or "not set"
+            rows.append(("—", f"Ticket {t['id']}", f"{t['priority']} {t['status']}, due {due} · "
+                                                   f"{t['assignee']} · {t['summary']}"))
+    return rows
 
-def _join_times(times: list[str]) -> str:
-    return times[0] if len(times) == 1 else ", ".join(times[:-1]) + " and " + times[-1]
+
+# ---------- template explanation (no API key needed) ----------
+
+def template_headline(item: ScoredItem) -> str:
+    f = item.finding
+    r = set(item.reasons)
+    meas = f.measurement or "reading"
+    past_now = latest_past_limit(f)
+    kind = short_type(f)
+    toward = "rising toward" if f.higher_worse else "falling toward"
+    calibration = any(x.get("type") == "unusable_after_calibration_due" for x in f.rules)
+
+    if "clash" in r:
+        text = f"{f.asset_id}: {f.repeats} {meas} {_alarm_word(f)}, notes said OK"
+    elif "trend_worsening" in r and past_now:
+        text = f"{f.asset_id} {meas} past alarm limit and getting worse"
+    elif "trend_worsening" in r and "near_limit" in r:
+        text = f"{f.asset_id} {meas} {toward} {value_with_unit(f.limit, f.unit)} alarm"
+    elif "trend_worsening" in r:
+        text = f"{f.asset_id} {meas} getting worse"
+    elif "no_open_ticket" in r:
+        text = f"{f.asset_id} {kind}: problem noted, no ticket".replace(" :", ":")
+    elif "due_soon" in r and calibration:
+        text = f"{f.asset_id} calibration due {f.due_by:%a %H:%M}"
+    elif "due_soon" in r:
+        what = f.due_by_source.split(" ")[0] if f.active_tickets.shape[0] else "deviation"
+        text = f"{f.asset_id} {kind}: {what} due {f.due_by:%a %H:%M}".replace(" :", ":")
+    elif "near_limit" in r:
+        text = f"{f.asset_id} {meas} close to {value_with_unit(f.limit, f.unit)} alarm"
+    elif "unacknowledged_latest" in r:
+        text = f"{f.asset_id}: latest alert not acknowledged"
+    else:
+        text = f"{f.asset_id}: worth a check"
+    return _limit_words(text)
+
+
+def template_bullets(item: ScoredItem) -> list[str]:
+    f = item.finding
+    r = set(item.reasons)
+    side = "above" if f.higher_worse else "below"
+    out = []
+
+    if "clash" in r:
+        n = len(f.clash_alert_times)
+        noun = "Note" if len(f.clash_note_times) == 1 else "Notes"
+        word = ("alarm" if f.max_severity == "high" else "alert") + ("s" if n > 1 else "")
+        out.append(f"{noun} at {join_times(f.clash_note_times)} said it was fine, but {n} more {word} came after.")
+
+    if f.values:
+        values = [v for _, v in f.values]
+        limit = value_with_unit(f.limit, f.unit) if f.limit is not None else None
+        all_past = limit is not None and all(f.is_worse(v, f.limit) for v in values)
+        if f.readings_are_events and limit:
+            listed = ", ".join(f"{v:g}" for v in values)
+            out.append(f"{len(values)} separate excursions {side} the {limit} limit: {listed} {f.unit}.".replace("  ", " "))
+        elif len(values) >= 2:
+            span = f"{len(values)} readings from {value_with_unit(values[0], f.unit)} to {value_with_unit(values[-1], f.unit)}"
+            if all_past:
+                out.append(f"{span}, all {side} the {limit} alarm limit.")
+            elif limit and latest_past_limit(f):
+                out.append(f"{span}; the latest is {side} the {limit} alarm limit.")
+            elif limit:
+                out.append(f"{span}; the alarm is at {limit}.")
+            else:
+                out.append(f"{span}.")
+        elif limit:
+            out.append(f"Reading {value_with_unit(values[-1], f.unit)}; the alarm is at {limit}.")
+
+    for rule in f.rules:
+        if rule.get("type") == "deviation_window_hours" and ("past_alarm_limit" in f.breaches or f.due_by):
+            out.append(f"Site rule: {rule_text(rule)}.")
+        elif rule.get("type") == "unusable_after_calibration_due" and f.due_by is not None:
+            out.append(f"Site rule: {rule_text(rule)}.")
+
+    if "no_open_ticket" in r and not f.repeats and len(f.notes):
+        concern = f.notes[~f.notes["reassuring"]]
+        if len(concern):
+            n = concern.iloc[-1]
+            text = n["text"] if len(n["text"]) <= 90 else n["text"][:87] + "..."
+            out.append(f'The {n["time"]} note reports a problem: "{text}"')
+
+    if "no_open_ticket" in r:
+        later = f.notes["mentions_future_action"].any() if len(f.notes) else False
+        out.append("No open ticket, although the note said it would be dealt with later."
+                   if later else "No open ticket.")
+
+    for _, t in f.active_tickets.iterrows():
+        if f.due_by is not None and t["id"] in f.due_by_source:
+            out.append(f"{t['id']} ({t['priority']}, {t['assignee']}) is due {fmt_time(t['due'], '%a %H:%M')}.")
+
+    if f.details.get("note"):
+        note = str(f.details["note"])
+        out.append(note[0].upper() + note[1:] + ".")
+
+    if "unacknowledged_latest" in r:
+        out.append(f"Latest alert at {f.alerts.iloc[-1]['time']} is not acknowledged.")
+
+    if not out:
+        out.append("Nothing urgent fired for this item.")
+    return out[:MAX_BULLETS]
+
+
+def template_action(item: ScoredItem) -> str:
+    f = item.finding
+    r = set(item.reasons)
+    deviation = any(x.get("type") == "deviation_window_hours" for x in f.rules)
+    calibration = any(x.get("type") == "unusable_after_calibration_due" for x in f.rules)
+
+    if "no_open_ticket" in r:
+        extra = " and log a deviation, as the site rule requires" if deviation else ""
+        if "clash" in r:
+            return f"Check {f.asset_id} on site now, then raise a ticket{extra}."
+        if latest_past_limit(f):
+            return f"Raise a ticket for {f.asset_id} and get it checked now: it is past its alarm limit."
+        if "trend_worsening" in r or "near_limit" in r:
+            return f"Raise a ticket for {f.asset_id} and get it inspected before it reaches the alarm limit."
+        return f"Raise a ticket for {f.asset_id}{extra}."
+    if "clash" in r:
+        return f"Check {f.asset_id} on site and confirm the open ticket covers what the data shows."
+    if "due_soon" in r and len(f.active_tickets):
+        t = f.active_tickets.sort_values("due").iloc[0]
+        action = f"Confirm with {t['assignee']} that {t['id']} will be done before {fmt_time(t['due'], '%a %H:%M')}"
+        if calibration:
+            action += f", or tag {f.asset_id} out of use"
+        return action + "."
+    if "due_soon" in r:
+        return f"Make sure {f.asset_id} is dealt with before {fmt_time(f.due_by, '%a %H:%M')}."
+    if "near_limit" in r:
+        return f"Keep an eye on {f.asset_id} and check it before it reaches the alarm limit."
+    if "unacknowledged_latest" in r:
+        return f"Acknowledge the latest {f.asset_id} alert and check the asset."
+    return f"Review {f.asset_id} when convenient."
 
 
 def template_explanation(item: ScoredItem) -> dict:
-    f = item.finding
-    rule = str(f.details.get("rule", ""))
-    reasons = item.reasons
-
-    # Headline: what it is + the most important reason.
-    if "clash" in reasons:
-        phrase = "notes say OK, alerts continued"
-    elif "trend_worsening" in reasons and "near_limit" in reasons:
-        phrase = "getting worse, near alarm limit"
-    elif "trend_worsening" in reasons:
-        phrase = "readings getting worse"
-    elif "no_open_ticket" in reasons:
-        phrase = "problem with no ticket"
-    elif "due_today" in reasons:
-        phrase = "ticket due today"
-    elif "unacknowledged_latest" in reasons:
-        phrase = "latest alert not acknowledged"
-    else:
-        phrase = "worth a check"
-    headline = f"{f.asset_id} {f.asset_type}: {phrase}"
-    if not f.asset_type or len(headline.split()) > MAX_HEADLINE_WORDS:
-        headline = f"{f.asset_id}: {phrase}"  # long asset types don't fit in 10 words
-
-    # Why: one sentence built from the facts that fired.
-    parts = []
-    if f.repeats:
-        counted = f"{f.repeats} {f.max_severity} alert{'s' if f.repeats > 1 else ''} this shift"
-        if len(f.values) >= 2:
-            span = f"{f.values[0][1]:g} to {f.values[-1][1]:g}"
-            if f.limit is not None and all(past_limit(v, f.limit, f.higher_worse) for _, v in f.values):
-                span += f", all past the {f.limit:g} limit"
-            counted += f" ({span})"
-        parts.append(counted)
-    if "clash" in reasons:
-        times = f.clash_note_times
-        noun = "note" if len(times) == 1 else "notes"
-        parts.append(f"the {_join_times(times)} {noun} said it was fine but alerts kept coming")
-    if "near_limit" in reasons:
-        parts.append(f"latest reading {f.values[-1][1]:g} is close to the {f.limit:g} alarm limit")
-    if "no_open_ticket" in reasons:
-        parts.append("there is no open ticket")
-    for ticket_id in f.due_ticket_ids:
-        t = f.tickets[f.tickets["id"] == ticket_id].iloc[0]
-        parts.append(f"{ticket_id} ({t['priority']}) is due today at {fmt_time(t['due'], '%H:%M')}")
-    if "unacknowledged_latest" in reasons:
-        parts.append("the latest alert is not acknowledged")
-    if rule:
-        parts.append(f"site rule: {rule}")
-    elif f.details.get("note"):
-        parts.append(f"{f.details['note']}")
-    why = ("; ".join(parts) or "nothing urgent fired").strip()
-    why = why[0].upper() + why[1:] + "."
-
-    # Action: one imperative sentence.
-    if "no_open_ticket" in reasons:
-        extra = " and log a deviation, as the site rule requires" if "deviation" in rule.lower() else ""
-        if "clash" in reasons:
-            action = f"Check {f.asset_id} on site now, then raise a ticket{extra}."
-        elif "trend_worsening" in reasons or "near_limit" in reasons:
-            action = f"Raise a ticket for {f.asset_id} and get it inspected before it reaches the alarm limit."
-        else:
-            action = f"Raise a ticket for {f.asset_id}{extra}."
-    elif "due_today" in reasons:
-        t = f.tickets[f.tickets["id"] == f.due_ticket_ids[0]].iloc[0]
-        action = f"Confirm with {t['assignee']} that {t['id']} will be done before {fmt_time(t['due'], '%H:%M')} today"
-        if "cannot be used" in rule.lower():
-            action += f", or tag {f.asset_id} out of use"
-        action += "."
-    elif "unacknowledged_latest" in reasons:
-        action = f"Acknowledge the latest {f.asset_id} alert and check the asset."
-    else:
-        action = f"Review {f.asset_id} when convenient."
-
-    evidence = build_evidence(item)
     return {
-        "headline": _limit_words(headline),
-        "why": why,
-        "action": action,
-        "citations": allowed_citations(evidence),
+        "headline": template_headline(item),
+        "bullets": template_bullets(item),
+        "action": template_action(item),
+        "citations": allowed_citations(build_evidence(item)),
         "source": "template",
     }
 
@@ -178,8 +301,8 @@ def template_explanation(item: ScoredItem) -> dict:
 
 SYSTEM_PROMPT = f"""You help an incoming shift engineer at a pharma site. You get the evidence for ONE item
 that our rules have already ranked as needing attention. Write:
-- headline: at most {MAX_HEADLINE_WORDS} words saying what is wrong
-- why: ONE sentence explaining why it needs attention now
+- headline: at most {MAX_HEADLINE_WORDS} words saying specifically what is wrong
+- bullets: 2 or 3 short plain-language points explaining why, with units on every value. No paragraphs.
 - action: ONE imperative sentence: the single most useful next step
 - citations: the "cite" values of the alerts, notes and tickets you relied on
 
@@ -194,11 +317,11 @@ SCHEMA = {
     "type": "object",
     "properties": {
         "headline": {"type": "string"},
-        "why": {"type": "string"},
+        "bullets": {"type": "array", "items": {"type": "string"}},
         "action": {"type": "string"},
         "citations": {"type": "array", "items": {"type": "string"}},
     },
-    "required": ["headline", "why", "action", "citations"],
+    "required": ["headline", "bullets", "action", "citations"],
     "additionalProperties": False,
 }
 
@@ -209,22 +332,24 @@ def _limit_words(text: str) -> str:
 
 
 def _numbers(text: str) -> set[float]:
-    text = DATE.sub(" ", text.replace("\u2212", "-"))  # treat a typographic minus like "-"
+    text = DATE.sub(" ", text.replace("−", "-"))  # treat a typographic minus like "-"
     return {float(n) for n in NUMBER.findall(text)}
+
+
+def _answer_text(answer: dict) -> str:
+    return " ".join([answer["headline"], *answer["bullets"], answer["action"]])
 
 
 def invented_numbers(answer: dict, evidence: dict) -> set[float]:
     """Numbers in the answer that appear nowhere in the evidence. Signs count: 61.9 is not -61.9."""
     known = _numbers(json.dumps(evidence, ensure_ascii=False))
-    written = _numbers(" ".join([answer["headline"], answer["why"], answer["action"]]))
-    return written - known
+    return _numbers(_answer_text(answer)) - known
 
 
 def overcounted_alerts(answer: dict, evidence: dict) -> list[str]:
     """Claims like "6 alarms" when the asset only had 4."""
-    text = " ".join([answer["headline"], answer["why"], answer["action"]])
     bad = []
-    for match in ALERT_COUNT.finditer(text):
+    for match in ALERT_COUNT.finditer(_answer_text(answer)):
         word = match[1].lower()
         n = COUNT_WORDS.get(word) or int(word)
         if n > evidence["alert_count"]:
@@ -240,9 +365,16 @@ def check_llm_answer(answer: dict, evidence: dict) -> dict:
     """Clean the answer, or raise BadAnswer if it can't be trusted."""
     if not isinstance(answer, dict):
         raise BadAnswer("not a JSON object")
-    for key in ("headline", "why", "action"):
+    for key in ("headline", "action"):
         if not isinstance(answer.get(key), str) or not answer[key].strip():
             raise BadAnswer(f"missing {key}")
+    bullets = answer.get("bullets")
+    if not isinstance(bullets, list) or not all(isinstance(b, str) for b in bullets):
+        raise BadAnswer("bullets must be a list of strings")
+    bullets = [b.strip() for b in bullets if b.strip()][:MAX_BULLETS]
+    if not bullets:
+        raise BadAnswer("no bullets")
+    answer = {**answer, "bullets": bullets}
     bad = invented_numbers(answer, evidence)
     if bad:
         raise BadAnswer(f"used values not in the evidence: {sorted(bad)}")
@@ -254,7 +386,7 @@ def check_llm_answer(answer: dict, evidence: dict) -> dict:
     cited = [c for c in citations if c in allowed] if isinstance(citations, list) else []
     return {
         "headline": _limit_words(answer["headline"].strip()),
-        "why": answer["why"].strip(),
+        "bullets": bullets,
         "action": answer["action"].strip(),
         "citations": cited or allowed,
     }
@@ -289,7 +421,7 @@ def explain_all(top: list[ScoredItem], mode: str = "manual") -> tuple[dict, list
             try:
                 raw = llm.ask_json(SYSTEM_PROMPT, json.dumps(evidence, indent=2), SCHEMA, effort="medium")
                 result = {**check_llm_answer(raw, evidence), "source": "llm"}
-                cache[key] = {k: result[k] for k in ("headline", "why", "action", "citations")}
+                cache[key] = {k: result[k] for k in ("headline", "bullets", "action", "citations")}
                 changed = True
             except llm.LLMUnavailable as e:
                 warnings.append(f"{item.asset_id}: LLM explanation not used ({e}); showing the template.")
