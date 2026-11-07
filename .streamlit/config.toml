@@ -1,5 +1,27 @@
 [theme]
 primaryColor = "#16181D"
+baseRadius = "8px"
+showWidgetBorder = true
+
+# Light and dark both defined: the app follows the computer's setting, and the menu (⋮ > Settings) can switch it.
+# Neutral greys only; amber and green keep their meaning in the app's own styles (ui/components.py).
+[theme.light]
+primaryColor = "#16181D"
+backgroundColor = "#FFFFFF"
+secondaryBackgroundColor = "#F7F7F5"
+textColor = "#16181D"
+borderColor = "#E7E7E4"
+
+[theme.dark]
+primaryColor = "#F5F5F3"
+backgroundColor = "#111215"
+secondaryBackgroundColor = "#1B1D22"
+textColor = "#EDEDEB"
+borderColor = "#2A2D33"
+
+[client]
+# Viewers get no Deploy button in the corner, so the sticky header has room for its controls.
+toolbarMode = "viewer"
 
 [browser]
 gatherUsageStats = false

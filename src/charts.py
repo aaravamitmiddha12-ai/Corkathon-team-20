@@ -11,11 +11,11 @@ import plotly.graph_objects as go
 from src.detect import parse_value
 
 GREY = "#8a8984"
-LINE_GREY = "#b9b8b2"
+LINE_GREY = "rgba(128, 128, 128, 0.45)"  # reads on light and dark
 AMBER = "#E8A33D"
 RED = "#d03b3b"
 RED_ZONE = "rgba(208, 59, 59, 0.10)"
-ORANGE = "#e8590c"
+WARN_LINE = "#8a8984"  # the warning level is neutral: amber is kept for "notes and data disagree"
 NOTE = "#5b6b84"
 AMBER_BAND = "rgba(232, 163, 61, 0.22)"
 TWO_HOURS_MS = 2 * 3600 * 1000
@@ -45,8 +45,10 @@ def _base_layout(fig: go.Figure, title: str, y_title: str, x_range: list, height
         plot_bgcolor="rgba(0,0,0,0)",
     )
     # tick0 = shift start, so the 2-hourly ticks land on 19:00, 21:00 ... 07:00 (not on even hours).
+    # Times stay level: Plotly would turn them on their side on a narrow chart and cut them off. On a narrow
+    # chart the CSS hides every other one instead (ui/components.py).
     fig.update_xaxes(title_text="Time (HH:MM)", tickformat="%H:%M", range=x_range, dtick=TWO_HOURS_MS,
-                     tick0=x_range[0], showgrid=False, zeroline=False)
+                     tick0=x_range[0], tickangle=0, showgrid=False, zeroline=False)
     fig.update_yaxes(title_text=y_title, gridcolor="rgba(128,128,128,0.18)", zeroline=False)
     return fig
 
@@ -91,7 +93,7 @@ def reading_chart(finding, shift) -> go.Figure | None:
             hovertemplate=f"Alarm limit {_with_unit(f.limit, unit)}<extra></extra>"))
     if f.warn_limit is not None:
         fig.add_trace(go.Scatter(
-            x=[x0, x1], y=[f.warn_limit, f.warn_limit], mode="lines", line=dict(color=ORANGE, dash="dash", width=1.5),
+            x=[x0, x1], y=[f.warn_limit, f.warn_limit], mode="lines", line=dict(color=WARN_LINE, dash="dot", width=1.5),
             name=f"Warning level {_with_unit(f.warn_limit, unit)}",
             hovertemplate=f"Warning level {_with_unit(f.warn_limit, unit)}<extra></extra>"))
 
@@ -116,7 +118,7 @@ def reading_chart(finding, shift) -> go.Figure | None:
         if len(part):
             fig.add_trace(go.Scatter(
                 x=part["timestamp"], y=part["value"], mode="markers", name=name,
-                marker=dict(color=colour, size=10, line=dict(color="white", width=1.5)),
+                marker=dict(color=colour, size=10, line=dict(width=0)),  # a white ring would glow on a dark page
                 customdata=part["message"], hovertemplate=hover))
 
     for n, (_, note) in enumerate(f.notes.iterrows()):
@@ -179,7 +181,7 @@ def timeline(result) -> go.Figure:
         if len(part):
             fig.add_trace(go.Scatter(
                 x=part["timestamp"], y=part["y"], mode="markers", name=name, cliponaxis=False,
-                marker=dict(color=colour, size=10, line=dict(color="white", width=1)),
+                marker=dict(color=colour, size=10, line=dict(width=0)),  # a white ring would glow on a dark page
                 customdata=part[["asset", "severity", "message"]].values, hovertemplate=hover))
     if len(notes):
         fig.add_trace(go.Scatter(
@@ -200,8 +202,9 @@ def timeline(result) -> go.Figure:
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
     )
     # tick0 = shift start, so the 2-hourly ticks land on 19:00, 21:00 ... 07:00 (not on even hours).
+    # tickangle=0: see _base_layout.
     fig.update_xaxes(type="date", tickformat="%H:%M", range=[shift.start, shift.handover], dtick=TWO_HOURS_MS,
-                     tick0=shift.start, showgrid=False, zeroline=False, fixedrange=True)
+                     tick0=shift.start, tickangle=0, showgrid=False, zeroline=False, fixedrange=True)
     fig.update_yaxes(range=[len(rows) - 0.5, -0.5], tickvals=list(range(len(rows))), showticklabels=False,
                      gridcolor="rgba(128,128,128,0.25)", zeroline=False, fixedrange=True)
     return fig

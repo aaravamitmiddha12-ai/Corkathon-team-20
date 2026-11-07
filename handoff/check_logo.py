@@ -12,10 +12,13 @@ from pathlib import Path
 import fitz
 from playwright.sync_api import sync_playwright
 
-REPO = Path(r"C:\Users\ksole\Corkathon-team-20")
-HERE = Path(__file__).parent
-SHOTS = HERE / "app"
-SHOTS.mkdir(exist_ok=True)
+# Paths come from this file's place in the repo (handoff/). Screenshots go to a temp folder, or BATON_SHOTS.
+HERE = Path(__file__).resolve().parent
+REPO = Path(os.environ.get("BATON_REPO_DIR", HERE.parent))
+SHOTS = Path(os.environ.get("BATON_SHOTS", Path(tempfile.gettempdir()) / "baton-checks")) / "app"
+SHOTS.mkdir(parents=True, exist_ok=True)
+# "chrome" by default; set BATON_CHANNEL=msedge on a machine that only has Edge (same engine).
+CHANNEL = os.environ.get("BATON_CHANNEL", "chrome")
 PORT = 8770
 URL = f"http://127.0.0.1:{PORT}/"
 fails = []
@@ -56,7 +59,8 @@ def open_home(ctx, url=URL):
     return page
 
 
-LOGO_INFO = """() => {const s=document.querySelector('.baton-logo svg'); if(!s) return null; const r=s.getBoundingClientRect();
+# The logo on show: the sidebar's on a wide screen, the top bar's below 1024px (the sidebar is then a closed drawer).
+LOGO_INFO = """() => {const s=[...document.querySelectorAll('.baton-logo svg')].find(e=>{const r=e.getBoundingClientRect(); return r.width>0 && r.right>0 && getComputedStyle(e).visibility==='visible'}); if(!s) return null; const r=s.getBoundingClientRect();
   const g=e=>getComputedStyle(s.querySelector(e)).fill;
   return {w:r.width,h:r.height,left:r.left,top:r.top,right:r.right,far:g('.baton-far'),near:g('.baton-near'),overlap:g('.baton-overlap'),
           word:getComputedStyle(s.querySelectorAll('path')[3]).fill,paths:s.querySelectorAll('path').length,
@@ -66,6 +70,14 @@ LOGO_INFO = """() => {const s=document.querySelector('.baton-logo svg'); if(!s) 
           heading:!!s.closest('h1,h2,h3,h4,h5,h6'), vw:innerWidth}}"""
 LIGHT = dict(far="rgb(184, 188, 196)", near="rgb(22, 24, 29)", overlap="rgb(232, 163, 61)", word="rgb(22, 24, 29)")
 DARK = dict(far="rgb(92, 96, 107)", near="rgb(245, 245, 243)", overlap="rgb(232, 163, 61)", word="rgb(245, 245, 243)")
+
+
+def open_before(page):
+    """Below 1024px the button is in the drawer: open it first."""
+    if page.locator(".baton-menu").is_visible():
+        page.locator(".baton-menu").click()
+        page.wait_for_timeout(400)
+    page.locator(".st-key-open-before-you-go button").click()
 
 
 def check_logo(page, label, colours):
@@ -103,7 +115,7 @@ proc = start()
 record_file = None
 try:
     with sync_playwright() as p:
-        b = p.chromium.launch(channel="chrome")
+        b = p.chromium.launch(channel=CHANNEL)
 
         # ---------- Desktop, light ----------
         ctx = b.new_context(viewport={"width": 1400, "height": 950}, color_scheme="light", accept_downloads=True)
@@ -147,18 +159,19 @@ try:
         faded = over(nums(amber["note"][2]) + [float(amber["time"][0])], surface)
         c = contrast(faded, surface)
         check(f"faded time on band {c:.2f}:1", c >= 4.5)
-        check("legend, tick, chart markers and bands", amber["dot"] == "rgb(232, 163, 61)" and amber["tick"] == "rgb(232, 163, 61)"
+        check("legend, markers and bands amber; warning tick neutral", amber["dot"] == "rgb(232, 163, 61)" and "232, 163, 61" not in amber["tick"]
               and "rgba(232, 163, 61, 0.28)" == amber["band"] and set(amber["markers"]) == {"#E8A33D"} and set(amber["bands"]) == {"rgba(232, 163, 61, 0.22)"}, str(amber))
         check("primary button is Slate", amber["primary"][0] == "rgb(22, 24, 29)", str(amber["primary"]))
         c = contrast(nums(amber["primary"][0]), nums(amber["primary"][1]))
         check(f"primary button text {c:.1f}:1", c >= 4.5)
         flash = page.evaluate("""() => {for (const s of document.styleSheets) { try { for (const r of s.cssRules) { if (r.name==='baton-flash') return r.cssText } } catch(e){} } return ''}""")
-        check("flash uses Signal amber", "232, 163, 61" in flash, flash)
+        # Amber is kept for "notes and data disagree": the jump flash uses the focus colour.
+        check("flash is neutral, not amber", "baton-focus" in flash and "232, 163, 61" not in flash, flash)
         page.mouse.move(5, 5)
         page.screenshot(path=SHOTS / "home-1400.png")
 
         # ---------- Before you go, desktop ----------
-        page.locator(".st-key-open-before-you-go button").click()
+        open_before(page)
         page.wait_for_selector(".st-key-back-home", timeout=30000)
         settle(page)
         check_logo(page, "before 1400", LIGHT)
@@ -233,38 +246,22 @@ try:
         page = open_home(ctx)
         check_logo(page, "home 390", LIGHT)
         page.screenshot(path=SHOTS / "home-390.png")
-        page.locator(".st-key-open-before-you-go button").click()
+        open_before(page)
         page.wait_for_selector(".st-key-back-home", timeout=30000)
         settle(page)
         check_logo(page, "before 390", LIGHT)
         page.screenshot(path=SHOTS / "before-390.png")
         ctx.close()
 
-        # ---------- A dark OS with the shipped config ----------
-        ctx = b.new_context(viewport={"width": 1400, "height": 950}, color_scheme="dark")
-        page = open_home(ctx)
-        info = page.evaluate(LOGO_INFO)
-        print("   OS dark, shipped config:", info["scheme"], info["bg"])
-        check_logo(page, "OS dark, shipped config", DARK if info["scheme"] == "dark" else LIGHT)
-        ctx.close()
-        b.close()
-finally:
-    proc.terminate()
-    proc.wait(timeout=30)
-
-# ---------- A dark theme, which the shipped config never selects but a host or a future config could ----------
-proc = start("--theme.base", "dark")
-try:
-    with sync_playwright() as p:
-        b = p.chromium.launch(channel="chrome")
+        # ---------- Dark: the shipped config has a light and a dark theme, and follows the computer ----------
         for width, height, tag in [(1400, 950, "1400"), (390, 844, "390")]:
-            ctx = b.new_context(viewport={"width": width, "height": height})
+            ctx = b.new_context(viewport={"width": width, "height": height}, color_scheme="dark")
             page = open_home(ctx)
             info = page.evaluate(LOGO_INFO)
             check(f"dark {tag}: app really is dark", info["scheme"] == "dark", str(info))
             check_logo(page, f"dark {tag} home", DARK)
             page.screenshot(path=SHOTS / f"dark-home-{tag}.png")
-            page.locator(".st-key-open-before-you-go button").click()
+            open_before(page)
             page.wait_for_selector(".st-key-back-home", timeout=30000)
             settle(page)
             check_logo(page, f"dark {tag} before", DARK)

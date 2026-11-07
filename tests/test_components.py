@@ -100,6 +100,7 @@ def test_timeline_has_no_transitions_and_a_handover_line(night_timeline):
     assert fig.layout.shapes[0].line.dash == "dash"
     assert fig.layout.annotations[0].text == "Handover 07:00"
     assert fig.layout.xaxis.dtick == 2 * 3600 * 1000
+    assert fig.layout.xaxis.tickangle == 0  # Plotly would otherwise turn the times sideways on a phone
 
 
 def test_timeline_bands_run_from_the_note_to_the_last_alert_on_clash_rows(night_timeline):

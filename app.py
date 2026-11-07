@@ -14,11 +14,10 @@ from src.brand import FAVICON
 from src.load import DEFAULT_SHIFT, SHIFTS
 from src.pipeline import run
 from ui import before_you_go, home
-from ui.components import CSS, logo, show
+from ui.components import CSS, NAV_SCRIPT, logo, nav, nav_progress, nav_state_rules, show, topbar
 
-st.set_page_config(page_title="Baton", page_icon=str(FAVICON), layout="wide")
+st.set_page_config(page_title="Baton", page_icon=str(FAVICON), layout="wide", initial_sidebar_state="expanded")
 show(CSS)
-show(logo())
 
 st.session_state.setdefault("page", "home")
 st.session_state.setdefault("state_version", 0)
@@ -42,7 +41,16 @@ def get_result(mode: str, shift_id: str):
     return st.session_state["result"]
 
 
-with st.sidebar:
+# ----- the left sidebar: logo, which handover, who is taking over, the sections, progress, the outgoing
+# engineer's page. Its parts are made in this order, but the bottom is filled first: the LLM toggle there decides
+# which result everything else shows. Below 1024px it's a drawer, opened from the top bar in the main pane.
+side_top, side_nav, side_bottom = st.sidebar.container(), st.sidebar.container(), st.sidebar.container(key="baton-nav-bottom")
+on_home = st.session_state["page"] == "home"
+with side_bottom:
+    progress_slot = st.container()
+    if on_home:
+        st.button("Outgoing engineer? Before you go", key="open-before-you-go",  # the arrow is CSS, so it can move
+                  on_click=lambda: st.session_state.update(page="before"), width="stretch")
     use_llm = st.toggle(
         "Use live LLM",
         value=False,
@@ -51,24 +59,29 @@ with st.sidebar:
     )
     st.caption(f"Model: `{llm.model_name()}`" if use_llm else "Demo mode: offline, no API calls.")
 
-# ----- top bar: which handover, who is taking over, and the outgoing engineer's page -----
-with st.container(key="baton-top"):
-    top = st.columns([3, 2, 2], vertical_alignment="bottom")
-with top[0]:
-    shift_id = st.radio("Handover", list(SHIFTS), format_func=lambda s: SHIFTS[s].label, horizontal=True,
-                        index=list(SHIFTS).index(DEFAULT_SHIFT), key="shift")
-with top[1]:
+with side_top:
+    show(logo())
+    shift_id = st.radio("Handover", list(SHIFTS), format_func=lambda s: SHIFTS[s].label.removesuffix(" handover"),
+                        horizontal=True, index=list(SHIFTS).index(DEFAULT_SHIFT), key="shift")
     st.session_state.setdefault(f"incoming_{shift_id}", SHIFTS[shift_id].incoming_engineer)
     st.text_input("Incoming engineer", key=f"incoming_{shift_id}")
-with top[2]:
-    if st.session_state["page"] == "home":
-        st.button("Outgoing engineer? Before you go →", key="open-before-you-go",
-                  on_click=lambda: st.session_state.update(page="before"), width="stretch")
 
 mode = "llm" if use_llm else "demo"
 result = get_result(mode, shift_id)
+
+with side_nav:
+    if on_home:
+        show(nav(shift_id, result.top))
+with progress_slot:
+    show(nav_progress())
+    show(f"<style>{' '.join(nav_state_rules(result.top, result.responses))}</style>")
+
+with st.container(key="baton-topbar"):
+    show(topbar())
 
 if st.session_state["page"] == "before":
     before_you_go.render(result, on_saved=state_changed)
 else:
     home.render(result, refresh=lambda: get_result(mode, shift_id))
+
+st.html(NAV_SCRIPT, unsafe_allow_javascript=True)

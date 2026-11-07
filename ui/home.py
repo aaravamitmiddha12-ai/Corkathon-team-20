@@ -7,7 +7,8 @@ from src import record, respond, review, state
 from src.charts import OTHER_ROW, ROW_HEIGHT, TIMELINE_TOP, reading_chart, timeline
 from src.due import due_label
 from src.explain import evidence_rows
-from ui.components import (EASE, chip, esc, key_line, limit_bar, progress_caption, progress_segments, reason_chips,
+from ui.components import (EASE, chip, esc, eyebrow, heading, heading_words, key_line, limit_bar, nav_state_rules, progress_caption,
+                           progress_segments, reason_chips,
                            short_name, show, slug)
 
 PLOTLY_CONFIG = {"displayModeBar": False, "responsive": True}
@@ -16,7 +17,7 @@ PLOTLY_CONFIG = {"displayModeBar": False, "responsive": True}
 # at the same height: a click follows it, and hover or keyboard focus on either side lights up the label and the
 # band behind that chart row. Every listener is on the document, once, and looks the rows up each time, so
 # Streamlit re-rendering or Plotly redrawing can't double them up or leave them on old elements.
-TIMELINE_SCRIPT = """<script>
+TIMELINE_SCRIPT = r"""<script>
 (function () {
   if (window.batonTimelineBound) return;
   window.batonTimelineBound = true;
@@ -31,15 +32,68 @@ TIMELINE_SCRIPT = """<script>
     });
   }
 
+  var reduce = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  function translateOf(el) {
+    var m = /translate\(([-\d.]+),\s*([-\d.]+)\)/.exec(el.getAttribute("transform") || "");
+    return m ? [parseFloat(m[1]), parseFloat(m[2])] : null;
+  }
+
+  // The chart's marks for one row: the others dim, these grow a little. Rows are numbered like the labels.
+  function markRow(row) {
+    var box = document.querySelector(".st-key-baton-timeline"), gd = box && box.querySelector(".js-plotly-plot");
+    var ya = gd && gd._fullLayout && gd._fullLayout.yaxis;
+    if (!box || !ya) return;
+    if (row < 0) box.removeAttribute("data-baton-hot"); else box.setAttribute("data-baton-hot", row);
+    box.querySelectorAll(".scatterlayer .point").forEach(function (p) {
+      var at = translateOf(p), on = row >= 0 && at && Math.round(ya.p2l(at[1])) === row;
+      if (on) p.setAttribute("data-baton-row-hot", ""); else p.removeAttribute("data-baton-row-hot");
+      p.style.transform = on && !reduce.matches ? "translate(" + at[0] + "px," + at[1] + "px) scale(1.3)" : "";
+    });
+    box.querySelectorAll(".barlayer .point").forEach(function (b) {
+      var r = b.getBBox(), on = row >= 0 && Math.round(ya.p2l(r.y + r.height / 2)) === row;
+      if (on) b.setAttribute("data-baton-row-hot", ""); else b.removeAttribute("data-baton-row-hot");
+    });
+  }
+
+  var lastHot = -1;
   function paint() {
     var rows = labels(), bands = document.querySelectorAll(root + ".baton-tl-band"), active = document.activeElement;
     var focused = active && active.matches && active.matches("a.baton-tl-label:focus-visible") ? rows.indexOf(active) : -1;
+    var hotRow = hovered >= 0 ? hovered : focused;
     rows.forEach(function (label, i) {
       var hot = i === hovered || i === focused;
       label.classList.toggle("baton-tl-hot", hot);
       if (bands[i]) bands[i].classList.toggle("baton-tl-hot", hot);
     });
+    if (hotRow !== lastHot) { lastHot = hotRow; markRow(hotRow); }
   }
+
+  // A note's own mark on the chart (a diamond: drawn without arcs, unlike the round alerts) pulses once.
+  function pulse(note) {
+    var box = document.querySelector(".st-key-baton-timeline"), gd = box && box.querySelector(".js-plotly-plot");
+    var lay = gd && gd._fullLayout, slug = note.getAttribute("data-slug"), time = note.getAttribute("data-time");
+    if (!lay || !slug || !time || reduce.matches) return;
+    var rows = labels(), row = rows.findIndex(function (l) { return l.getAttribute("href") === "#card-" + slug; });
+    if (row < 0) row = rows.length - 1;  // not a top item: the "Other" row
+    box.querySelectorAll(".scatterlayer .point").forEach(function (p) {
+      var at = translateOf(p);
+      if (!at || /A/.test(p.getAttribute("d") || "") || Math.round(lay.yaxis.p2l(at[1])) !== row) return;
+      var t = new Date(Math.round(lay.xaxis.p2l(at[0]) / 60000) * 60000);
+      var hhmm = ("0" + t.getUTCHours()).slice(-2) + ":" + ("0" + t.getUTCMinutes()).slice(-2);
+      if (hhmm !== time || !p.animate) return;
+      var base = "translate(" + at[0] + "px," + at[1] + "px)";
+      p.animate([{ transform: base + " scale(1)" }, { transform: base + " scale(1.9)" }, { transform: base + " scale(1)" }],
+                { duration: 320, easing: "ease-out" });
+    });
+  }
+  document.addEventListener("pointerover", function (e) {
+    var note = e.target && e.target.closest ? e.target.closest(".hc-note") : null;
+    if (note && e.pointerType !== "touch" && !(e.relatedTarget && note.contains(e.relatedTarget))) pulse(note);
+  });
+  document.addEventListener("focusin", function (e) {
+    if (e.target && e.target.matches && e.target.matches(".hc-note:focus-visible")) pulse(e.target);
+  });
 
   function track(e) {
     var row = -1, target = e.target;
@@ -170,7 +224,8 @@ def timeline_bands(result) -> str:
 
 def timeline_section(result) -> None:
     shift = result.shift
-    show(f'<div class="baton-section">Shift at a glance · {shift.start:%a %H:%M} to {shift.handover:%a %H:%M}</div>')
+    show(eyebrow(2, "Shift at a glance"))
+    show(f'<div class="baton-h3 baton-words">{heading_words(f"{shift.start:%a %H:%M} to {shift.handover:%a %H:%M}")}</div>')
     with st.container(key="baton-timeline"):
         labels, chart = st.columns([1, 3], gap=None)
         with labels:
@@ -188,14 +243,16 @@ def timeline_section(result) -> None:
 # ---------- pieces ----------
 
 def notes_column(result) -> None:
-    st.subheader("What the notes say")
+    show(eyebrow(4, "Notes"))
+    show(heading("What the notes say"))
     for _, note in result.notes.iterrows():
         asset = note["asset_id"]
         finding = result.findings.get(asset) if isinstance(asset, str) else None
         is_clash = bool(finding and note["time"] in finding.clash_note_times)
         tag = chip("data disagrees", "clash") if is_clash else ""
         label = f'<span class="hc-asset">{esc(asset)}</span>' if isinstance(asset, str) else ""
-        show(f'<div class="hc-note{" clash" if is_clash else ""}"><span class="hc-time">{esc(note["time"])}</span>'
+        where = f' data-slug="{slug(asset)}" data-time="{esc(note["time"])}"' if isinstance(asset, str) else ""
+        show(f'<div class="hc-note{" clash" if is_clash else ""}" tabindex="0"{where}><span class="hc-time">{esc(note["time"])}</span>'
              f'{esc(note["text"])} {tag}{label}</div>')
     show('<div class="hc-muted">Amber = the note said it was fine, but a medium or high alert came after it.</div>')
 
@@ -203,7 +260,7 @@ def notes_column(result) -> None:
 def response_status(r: dict | None) -> str:
     if not r:
         return ""
-    who = f" · {esc(r.get('name', ''))} · {esc(state.short_time(r.get('at', '')))}"
+    who = f" · {esc(r.get('name', ''))} · <span class=\"baton-mono\">{esc(state.short_time(r.get('at', '')))}</span>"
     if r["kind"] == "got_it":
         return f'<div class="hc-status done">✓ Got it{who}</div>'
     if r["kind"] == "ticket_drafted":
@@ -254,7 +311,8 @@ def slim_row(result, item, r: dict, just_changed: str | None) -> None:
         text, action = st.columns([6, 1], vertical_alignment="center")
         with text:
             show(f'<div id="card-{slug(asset)}" class="baton-slim{animate}"><span class="tick">✓</span> '
-                 f'<b>{esc(asset)}</b> · {esc(slim_text(r))} · {esc(state.short_time(r.get("at", "")))}</div>')
+                 f'<b>{esc(asset)}</b> · {esc(slim_text(r))} · '
+                 f'<span class="baton-mono">{esc(state.short_time(r.get("at", "")))}</span></div>')
         action.button("Open", key=f"open-{shift_id}-{asset}", on_click=on_reopen, args=(shift_id, asset),
                       type="tertiary", width="stretch")
 
@@ -315,10 +373,12 @@ def card(result, n: int, item, locked: bool) -> None:
                       args=(shift.id, item.asset_id), type="tertiary")
 
 
-def html_table(headers: list[str], rows: list, plain_first: bool = False) -> str:
-    """A small table that wraps long text (st.dataframe would cut it off)."""
+def html_table(headers: list[str], rows: list, plain_first: bool = False, id_col: int | None = None) -> str:
+    """A small table that wraps long text (st.dataframe would cut it off). The id_col column holds asset ids,
+    which stay whole on one line in monospace."""
     head = "".join(f"<th>{esc(h)}</th>" for h in headers)
-    body = "".join("<tr>" + "".join(f"<td>{esc(c)}</td>" for c in row) + "</tr>" for row in rows)
+    body = "".join("<tr>" + "".join(f'<td{" class=\"baton-id\"" if n == id_col else ""}>{esc(c)}</td>'
+                                    for n, c in enumerate(row)) + "</tr>" for row in rows)
     cls = "hc-ev plain" if plain_first else "hc-ev"
     # The box scrolls sideways on its own when the columns need more room than the card has.
     return (f'<div class="baton-table-box"><table class="{cls}" style="min-width:{len(headers) * 6.5}rem">'
@@ -349,8 +409,9 @@ def context_line(f) -> str:
 
 
 def lists_below(result) -> None:
+    show(eyebrow(5, "Also checked"))
     if result.carried:
-        st.subheader("Carried over from last handover")
+        show(heading("Carried over from last handover"))
         rows = []
         for item in result.carried:
             headline = result.explanations[item.asset_id]["headline"].removeprefix(f"{item.asset_id}: ")
@@ -364,10 +425,11 @@ def lists_below(result) -> None:
     with st.expander(f"Checked, not urgent ({len(result.not_urgent)} items)", expanded=False):
         rows = [(i.asset_id, i.finding.asset_type or "not in asset list", context_line(i.finding))
                 for i in result.not_urgent]
-        show(html_table(["Asset", "What it is", "What we saw"], rows, plain_first=True))
+        show(html_table(["Asset", "What it is", "What we saw"], rows, plain_first=True, id_col=0))
 
 
 def sign_off_section(result, signed: dict | None) -> None:
+    show(eyebrow(None, "Sign off"))
     st.subheader("Handover record")
     shift = result.shift
     if signed:
@@ -381,7 +443,7 @@ def sign_off_section(result, signed: dict | None) -> None:
                 ["#", "Asset", "Action", "Outgoing comment", "Response", "Reason", "By", "When"],
                 [(i["rank"], i["asset"], i["action"], i["outgoing_comment"], i["response"], i["reason"],
                   i["responder"], state.short_time(i["response_time"])) for i in signed["items"]],
-                plain_first=True))
+                plain_first=True, id_col=1))
             carried = signed.get("carried_over", [])
             if carried:
                 st.caption("Carried over from last handover: " + ", ".join(i["asset"] for i in carried))
@@ -421,17 +483,15 @@ def row_state_rules(result) -> list[str]:
 
 
 def motion_css(result, just_changed: str | None, intro: bool, ready: bool) -> str:
-    """Rules that depend on this render. Animations that must run once: Streamlit cards can't take a class, but
-    they have a key, so these exist for a single render, and removing them later doesn't replay anything.
-    Then the live state of the timeline labels."""
+    """Rules that depend on this render. The sign-off fades in when the fifth item is handled: Streamlit
+    containers can't take a class, but they have a key, so the rule exists for that one render. Then the live
+    state of everything outside this fragment: the timeline labels and the sidebar's dots and progress.
+    (Sections reveal as they scroll into view, in the page script, so `intro` adds nothing here now.)"""
     rules = []
-    if intro:
-        for n, item in enumerate(result.top, start=1):
-            rules.append(f".st-key-baton-card-{result.shift.id}-{slug(item.asset_id)} "
-                         f"{{ animation: baton-in 240ms {EASE} both; animation-delay: {n * 50}ms; }}")
     if ready and just_changed:
         rules.append(f".st-key-baton-signoff {{ animation: baton-in 240ms {EASE} both; }}")
     rules += row_state_rules(result)
+    rules += nav_state_rules(result.top, result.responses, strong=True)
     return f"<style>{' '.join(rules)}</style>"
 
 
@@ -448,7 +508,7 @@ def responses_section(refresh) -> None:
     show(motion_css(result, just_changed, intro, ready))
     if message := st.session_state.pop("flash", None):
         st.info(message)
-    show(progress_segments(result.top, result.responses, just_changed, enter=intro))
+    show(progress_segments(result.top, result.responses, just_changed))
     show(f'<div class="baton-progress-caption">{esc(progress_caption(result.top, result.responses))}</div>')
     show(key_line())
 
@@ -461,30 +521,37 @@ def responses_section(refresh) -> None:
     if signed or ready:
         with st.container(key="baton-signoff"):
             sign_off_section(result, signed)
-    lists_below(result)
 
     st.session_state["intro_done"] = True
     st.session_state["just_changed"] = None
 
 
 def render(result, refresh) -> None:
+    """Five sections, each in its own keyed container so the page script can reveal it as it scrolls in.
+    The numbers match the sidebar (ui/components.py, SECTIONS)."""
     shift = result.shift
 
-    show(f'<div class="hc-header"><h1>Baton · {esc(shift.title)}</h1></div>')
-    show(f'<div class="hc-sub">From {esc(result.pack.outgoing_engineer)} · {esc(shift.id)} shift</div>')
+    with st.container(key="baton-sec-1"):
+        show(eyebrow(1, "Start here", first=True))
+        show(f'<div class="hc-header"><h1 class="baton-words">{heading_words(f"Baton · {shift.title}")}</h1></div>')
+        show(f'<div class="hc-sub">From {esc(result.pack.outgoing_engineer)} · {esc(shift.id)} shift</div>')
+        if result.review_items and not result.review_complete:
+            show('<div class="hc-banner"><b>Outgoing review not completed.</b> '
+                 'The outgoing engineer hasn\'t said yet whether the flagged items are real issues.</div>')
+        for warning in result.warnings:
+            st.info(warning)
 
-    if result.review_items and not result.review_complete:
-        show('<div class="hc-banner"><b>Outgoing review not completed.</b> '
-             'The outgoing engineer hasn\'t said yet whether the flagged items are real issues.</div>')
-    for warning in result.warnings:
-        st.info(warning)
-
-    timeline_section(result)
+    with st.container(key="baton-sec-2"):
+        timeline_section(result)
 
     with st.container(key="baton-main"):
-        left, right = st.columns([2, 3], gap="large")
-    with left:
-        notes_column(result)
-    with right:
-        st.subheader("Needs you first")
+        first, second = st.columns([3, 2], gap="large")
+    with first, st.container(key="baton-sec-3"):
+        show(eyebrow(3, "Respond"))
+        show(heading("Needs you first"))
         responses_section(refresh)
+    with second, st.container(key="baton-sec-4"):
+        notes_column(result)
+
+    with st.container(key="baton-sec-5"):
+        lists_below(result)

@@ -3,10 +3,13 @@ import os, subprocess, sys, tempfile, time, urllib.request
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 
-REPO = Path(r"C:\Users\ksole\Corkathon-team-20")
-HERE = Path(__file__).parent
-SHOTS = HERE / "baton"
-SHOTS.mkdir(exist_ok=True)
+# Paths come from this file's place in the repo (handoff/). Screenshots go to a temp folder, or BATON_SHOTS.
+HERE = Path(__file__).resolve().parent
+REPO = Path(os.environ.get("BATON_REPO_DIR", HERE.parent))
+SHOTS = Path(os.environ.get("BATON_SHOTS", Path(tempfile.gettempdir()) / "baton-checks")) / "baton"
+SHOTS.mkdir(parents=True, exist_ok=True)
+# "chrome" by default; set BATON_CHANNEL=msedge on a machine that only has Edge (same engine).
+CHANNEL = os.environ.get("BATON_CHANNEL", "chrome")
 fails = []
 
 
@@ -56,7 +59,7 @@ def got_it(page, asset):
 
 try:
     with sync_playwright() as p:
-        b = p.chromium.launch(channel="chrome")
+        b = p.chromium.launch(channel=CHANNEL)
         ctx = b.new_context(viewport={"width": 1400, "height": 950}, color_scheme="light")
         page = ctx.new_page()
         errors = []
@@ -76,14 +79,14 @@ try:
 
         # Logo
         check("one logo, with its accessible name", page.get_by_role("img", name="Baton", exact=True).count() == 1)
-        check("logo drawn, not an empty box", page.locator(".baton-logo svg path").count() == 4)
+        check("logo drawn, not an empty box", page.locator("[data-testid=stSidebar] .baton-logo svg path").count() == 4)
         # Streamlit puts its own hover link-anchor (an svg) in every heading; nothing else may be there.
         extra = page.evaluate("""() => [...document.querySelectorAll('.hc-header h1 svg')]
            .filter(s => !s.closest('[data-testid="stHeaderActionElements"]')).map(s => s.outerHTML.slice(0, 80))""")
         check("no icon inside the title (besides Streamlit's anchor link)", extra == [], str(extra))
-        place = page.evaluate("""() => {const r=document.querySelector('.baton-logo svg').getBoundingClientRect(), t=document.querySelector('.hc-header h1').getBoundingClientRect();
+        place = page.evaluate("""() => {const r=document.querySelector('[data-testid=stSidebar] .baton-logo svg').getBoundingClientRect(), t=document.querySelector('[data-testid=stSidebar] [data-testid=stRadio]').getBoundingClientRect();
            return [r.bottom<=t.top, r.height, r.left, t.left]}""")
-        check("logo above the title, on its left edge", place[0] and abs(place[2] - place[3]) < 1 and 24 <= place[1] <= 40, str(place))
+        check("logo tops the sidebar, above the picker, 45px", place[0] and abs(place[2] - place[3]) < 1 and 40 <= place[1] <= 50, str(place))
         fav = page.evaluate("""async () => {const l=[...document.querySelectorAll('link[rel*="icon"]')].pop(); const r=await fetch(l.href);
            const b=new Uint8Array(await r.arrayBuffer()); return [l.href, r.headers.get('content-type'), [...b.slice(0,4)]]}""")
         check("browser tab shows the favicon file", fav[1] == "image/png" and fav[2] == [137, 80, 78, 71], str(fav))
@@ -240,14 +243,38 @@ try:
         check("no exception box", page.locator('[data-testid="stException"]').count() == 0)
         ctx.close()
 
-        # Intro animation on first load
+        # Sections reveal as they scroll into view (the old on-load entrance), and the timeline draws in time order
         ctx = b.new_context(viewport={"width": 1400, "height": 950})
         page = ctx.new_page()
         page.goto(URL)
-        page.wait_for_function("document.querySelectorAll('div[class*=st-key-baton-card-night-]').length >= 5", timeout=60000)
-        intro = page.evaluate("""() => [...document.querySelectorAll('div[class*="st-key-baton-card-"]')].map(e=>[getComputedStyle(e).animationName,getComputedStyle(e).animationDelay])""")
-        check("entrance runs on first load, staggered 50ms", intro[0] == ["baton-in", "0.05s"] and intro[1] == ["baton-in", "0.1s"], str(intro[:2]))
-        check("progress bar enters first", page.locator(".baton-segments.baton-enter").count() == 1)
+        page.wait_for_selector(".st-key-baton-timeline .js-plotly-plot .scatterlayer", timeout=60000)
+        page.wait_for_function("document.querySelector('.st-key-baton-timeline').getAttribute('data-baton-chart')", timeout=20000)
+        chart = page.evaluate(r"""() => {const box=document.querySelector('.st-key-baton-timeline'), pts=[...box.querySelectorAll('.scatterlayer .point')];
+            const xy=pts.map(p=>[parseFloat(/translate\(([-\d.]+)/.exec(p.getAttribute('transform'))[1]), parseInt(p.style.getPropertyValue('--baton-d'))]);
+            const bars=[...box.querySelectorAll('.barlayer .point path')].map(b=>[getComputedStyle(b).animationName, b.style.getPropertyValue('--baton-len')]);
+            return {state: box.getAttribute('data-baton-chart'), xy, bars, anim: pts.length ? getComputedStyle(pts[0]).animationName : ''}}""")
+        xy = sorted(chart["xy"])
+        check("timeline plays: marks appear left to right over ~800ms", chart["state"] == "play" and chart["anim"] == "baton-fade"
+              and all(a[1] <= b[1] for a, b in zip(xy, xy[1:])) and 150 <= xy[0][1] and xy[-1][1] <= 1050, str(chart)[:300])
+        check("timeline plays: amber bands grow", chart["bars"] and all(n == "baton-grow" and l for n, l in chart["bars"]), str(chart["bars"]))
+        page.wait_for_timeout(1500)
+        check("timeline draws once, then rests", page.evaluate("document.querySelector('.st-key-baton-timeline').getAttribute('data-baton-chart')") == "done")
+        seen = page.evaluate("[...document.querySelectorAll('[class*=st-key-baton-sec-]')].map(s=>s.getAttribute('data-baton-seen'))")
+        check("sections below the fold wait to be revealed", seen[0] and seen[-1] is None, str(seen))
+        hidden = page.evaluate("getComputedStyle(document.querySelector('.st-key-baton-sec-5').children[1]).opacity")
+        check("an unrevealed section is hidden", hidden == "0", hidden)
+        page.evaluate("document.getElementById('sec-5').scrollIntoView({behavior: 'instant'})")
+        page.wait_for_timeout(120)
+        rev = page.evaluate("""() => {const s=document.querySelector('.st-key-baton-sec-5'); return [s.getAttribute('data-baton-seen'),
+            [...s.children].slice(0, 2).map(c=>getComputedStyle(c).transitionDelay), getComputedStyle(s.children[1]).transitionDuration]}""")
+        check("scrolling in reveals it: 300ms fade and slide, children 50ms apart", rev[0] == "anim" and rev[2].startswith("0.3s")
+              and rev[1][0] != rev[1][1], str(rev))
+        page.wait_for_timeout(1400)
+        page.evaluate("document.querySelector('[data-testid=stMain]').scrollTo({top: 0, behavior: 'instant'})")
+        page.wait_for_timeout(300)
+        page.evaluate("document.getElementById('sec-5').scrollIntoView({behavior: 'instant'})")
+        page.wait_for_timeout(200)
+        check("a section reveals once only", page.evaluate("document.querySelector('.st-key-baton-sec-5').getAttribute('data-baton-seen')") == "done")
         ctx.close()
 
         # Dark, phone, reduced motion, day shift
@@ -275,7 +302,7 @@ try:
                 check("reduced motion turns everything off", vals[0] == "none" and vals[1] in ("0s", "") and vals[2] == "auto", str(vals))
             page.screenshot(path=SHOTS / f"5-{name}.png", full_page=name != "phone")
             if name == "day-switch":
-                page.get_by_text("Sat 19:00 handover").click()
+                page.get_by_test_id("stRadioGroup").get_by_text("Sat 19:00").click()
                 page.wait_for_function("document.querySelector('.hc-header h1').innerText.includes('19:00')", timeout=30000)
                 page.wait_for_selector(".js-plotly-plot .scatterlayer", timeout=30000)
                 settle(page)

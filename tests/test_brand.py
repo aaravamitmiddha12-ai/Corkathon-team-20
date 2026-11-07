@@ -111,14 +111,14 @@ def test_logo_starts_from_the_file_for_the_theme_the_browser_reported(monkeypatc
     assert logo() == f'<div class="baton-logo">{brand.inline_svg(name)}</div>'
 
 
-def test_logo_tops_the_home_screen_and_stays_out_of_the_heading():
+def test_logo_tops_the_sidebar_and_stays_out_of_the_heading():
     at = AppTest.from_file(APP, default_timeout=90).run()
     assert not at.exception, at.exception
-    values = [m.value for m in at.markdown]
-    assert next(i for i, v in enumerate(values) if 'class="baton-logo"' in v) == 1     # straight after the styles
-    assert 'role="img"' in values[1] and 'aria-label="Baton"' in values[1] and "<svg" in values[1]
-    h1 = re.search(r"<h1>(.*?)</h1>", screen_html(at)).group(1)
-    assert h1 == "Baton · Sat 7 Nov, 07:00 handover"
+    side = [m.value for m in at.sidebar.markdown]
+    assert 'class="baton-logo"' in side[0]                                             # first thing in the sidebar
+    assert 'role="img"' in side[0] and 'aria-label="Baton"' in side[0] and "<svg" in side[0]
+    h1 = re.search(r"<h1[^>]*>(.*?)</h1>", screen_html(at)).group(1)
+    assert "<svg" not in h1 and re.sub(r"<[^>]+>", "", h1) == "Baton · Sat 7 Nov, 07:00 handover"
 
 
 def test_logo_is_on_the_before_you_go_screen_too():

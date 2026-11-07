@@ -153,6 +153,59 @@ so CSS classes apply.
 All durations 150-260 ms, ease-out, opacity and small movements only. Run the existing tests and the app after the
 changes and fix anything that breaks.
 
+## Update: reactive step finished (Sat 07 Nov 2026)
+
+Step 2 is done. Picked up on a second machine and checked in Edge (`BATON_CHANNEL=msedge`, same engine as Chrome).
+
+- **Added:** `tests/test_row_state.py` (8 tests for the live timeline-label rules) and `handoff/check_reactive.py`
+  (212 browser checks: every width with the sidebar open and shut, live resizing, linked hover and focus, live
+  label state across responses, reopen, shift switch, reload and full reruns, listeners bound once, touch sizes).
+- **Fixed:** on narrow phones Plotly turned the timeline times sideways and cut them off ("19:", "23:"). Times are
+  now always level (`tickangle=0`), and the existing CSS hides every other one on narrow charts.
+- **Check scripts:** no longer hard-code the original machine's paths. They find the repo from their own folder,
+  put screenshots in a temp folder (or `BATON_SHOTS`), and take the browser from `BATON_CHANNEL`.
+- **Results:** pytest 194 passed; `check_baton.py`, `check_logo.py` and `check_reactive.py` all pass.
+
+Then **steps 3 and 4 (audit and fix)** were done the same day. The audit found and fixed: handled-row and
+response times weren't monospace; asset IDs in the "Checked, not urgent" and record tables weren't monospace and
+split at hyphens on phones (they now stay whole and the table scrolls); timeline times turned sideways on phones.
+
+## Update: new style brief (sections 4 to 7), Sat 07 Nov 2026
+
+The owner then asked for a restyle in four parts. Where it changes a rule above, the newer brief wins:
+
+- **4. Style:** Linear/Stripe-like. Neutral colours with tokens on `:root` that switch with `light-dark()`;
+  type steps 12/14/16/20/32/48; a 48px hero; small mono uppercase labels above each section ("02 · SHIFT AT A
+  GLANCE"); hairline borders instead of grey boxes; soft shadows on cards only; content capped at 1200px.
+  **Dark mode** is on: `.streamlit/config.toml` defines `[theme.light]` and `[theme.dark]`, so the app follows
+  the computer and the ⋮ menu can switch it. `toolbarMode = "viewer"` hides the Deploy button.
+- **Amber now means only** "notes and data disagree" / "said fine, kept alerting". The limit-bar warning tick,
+  the evidence chart's warning line and the jump flash are neutral. Green = handled. Red = over limit/overdue.
+- **5. Sidebar** (replaced the sticky header from section 4): Streamlit's own sidebar, fixed at 240px, holds the
+  logo, the handover picker, the incoming engineer, section nav with the 5 items and status dots, progress, the
+  Before you go button and the LLM toggle. Below 1024px it's a drawer opened from a slim top bar (Esc, backdrop
+  click and nav clicks close it; focus is trapped). Scroll-spy uses IntersectionObserver; the indicator slides.
+  "Needs you first" now comes before "What the notes say" (left column / first when stacked) to match the nav
+  numbering, and "Also checked" moved below both columns as section 05.
+- **6. Scroll:** sections reveal once as they enter view (replacing the on-load entrance); the timeline draws
+  in time order once; a reading-progress bar; Back to top after one screen.
+- **7. Hover polish:** text roll on nav items and the Before you go button; amber/green tint wipe on cards and
+  sidebar items; timeline row hover (band sweep, other rows dim, marks grow); note hover (left bar, time nudge,
+  its chart mark pulses once); a 4px pull on primary buttons; word-masked heading reveals; slight hero parallax.
+  No framer-motion or Lenis (none installed, and Lenis needs the owner's approval). Everything stops or becomes
+  plain colour/opacity under reduced motion.
+- **Judgement calls:** "01 · START HERE" labels the hero, read as the page order the example implied. Chips don't
+  react to hover, because they aren't clickable and a hover would suggest they are. Notes got `tabindex="0"` so
+  their hover effect also works from the keyboard.
+
+How it's built: `ui/components.py` holds the CSS and `NAV_SCRIPT` (sidebar, drawer, reveals, chart draw, progress,
+Back to top, button pull, parallax); `ui/home.py`'s `TIMELINE_SCRIPT` handles the timeline and note hovers. The
+sidebar's dots and count update without a rerun through per-render CSS rules (`nav_state_rules`), the same trick
+as the timeline ticks.
+
+Checks: `handoff/check_reactive.py` covers all of the above. On a machine without Chrome, set
+`BATON_CHANNEL=msedge`.
+
 ## State when this was pushed
 
 - **When:** Sat 07 Nov 2026 14:50

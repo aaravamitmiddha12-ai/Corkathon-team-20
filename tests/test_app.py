@@ -1,5 +1,6 @@
 """Drive the real Streamlit screens (no browser) with Streamlit's AppTest."""
 
+import re
 from pathlib import Path
 
 import pytest
@@ -59,7 +60,7 @@ def test_card_shows_dismissed_earlier_now_worse():
     html = page_html(at)
     assert "Dismissed earlier, now worse" in html
     assert "8.9 mm/s is worse than 8.1 mm/s" in html
-    assert "Carried over from last handover" in [s.value for s in at.subheader]
+    assert 'role="heading" aria-level="2" aria-label="Carried over from last handover"' in page_html(at)
     assert "Previously dismissed: Known sensor or instrument fault (WO-1195)" in html
 
 
@@ -104,8 +105,8 @@ def test_before_you_go_saves_and_clears_the_banner():
 @pytest.mark.parametrize("shift", ["night", "day"])
 def test_both_handovers_render_all_sections(shift):
     at = start(shift)
-    subheaders = [s.value for s in at.subheader]
-    assert {"What the notes say", "Needs you first"} <= set(subheaders)
+    html = page_html(at)
+    assert all(f'role="heading" aria-level="2" aria-label="{h}"' in html for h in ("What the notes say", "Needs you first"))
     assert any(e.label.startswith("Checked, not urgent") for e in at.expander)
     assert "Key:" in page_html(at)
 
@@ -142,13 +143,13 @@ def test_typed_incoming_name_survives_switching_shifts():
 
 
 def transient_style(at: AppTest) -> str:
-    """The one-render animation rules (not the permanent style block)."""
-    return next(m.value for m in at.markdown if m.value.startswith("<style>") and "scroll-behavior" not in m.value)
+    """The responses fragment's per-render rules (not the permanent style block or the sidebar's copy)."""
+    return next(m.value for m in at.markdown if m.value.startswith("<style>") and "html .baton-nav-progress" in m.value)
 
 
 def test_header_shows_the_name_and_no_expert_badge():
     html = page_html(start())
-    assert "Baton · Sat 7 Nov, 07:00 handover" in html
+    assert "Baton · Sat 7 Nov, 07:00 handover" in re.sub(r"<[^>]+>", "", html)   # the title's words are masked one by one
     assert "From D. Murphy · night shift" in html
     assert "expert ranking" not in html
 
@@ -159,6 +160,7 @@ def test_handled_item_collapses_to_one_line_and_can_be_reopened():
     assert "got-night-HPLC-07" not in button_keys(at)
     slim = [m.value for m in at.markdown if 'class="baton-slim' in m.value]
     assert len(slim) == 1 and "HPLC-07" in slim[0] and "Got it" in slim[0]
+    assert '<span class="baton-mono">' in slim[0]  # the brief: times in monospace
     at.button(key="open-night-HPLC-07").click().run()
     assert "got-night-HPLC-07" in button_keys(at)
     at.button(key="collapse-night-HPLC-07").click().run()
@@ -175,11 +177,12 @@ def test_drafted_ticket_stays_open_until_it_is_closed():
     assert "open-night-CH-2-P3" in button_keys(at)
 
 
-def test_entrance_runs_once_and_only_the_item_just_responded_to_animates():
+def test_no_entrance_on_render_and_only_the_item_just_responded_to_animates():
+    """Sections reveal as they scroll into view (the page script), so no render carries an entrance."""
     at = start()
-    assert "baton-in" in transient_style(at)                 # entrance on the first render...
+    assert "baton-in" not in transient_style(at) and "baton-segments baton-enter" not in page_html(at)
     at.button(key="got-night-FRZ-12").click().run()
-    assert "baton-in" not in transient_style(at)             # ...never again
+    assert "baton-in" not in transient_style(at)
     at.button(key="got-night-WFI-LOOP-1").click().run()
     html = " ".join(m.value for m in at.markdown if "scroll-behavior" not in m.value)
     assert html.count("baton-seg-new") == 1 and html.count("baton-slim baton-done") == 1
@@ -191,3 +194,21 @@ def test_every_anchor_target_exists():
     for asset in TOP_NIGHT:
         assert f'href="#card-{asset}"' in html and f'id="card-{asset}"' in html
     assert "Other (" in html
+
+
+def test_sidebar_lists_every_section_and_the_top_items():
+    html = page_html(start())
+    for n in range(1, 6):
+        assert f'href="#sec-{n}"' in html and f'id="sec-{n}"' in html   # every nav link has its section
+    for asset in TOP_NIGHT:
+        assert f'class="baton-nav-asset" href="#card-{asset}"' in html and f'data-open="open-night-{asset}"' in html
+
+
+def test_sidebar_dot_and_progress_follow_a_response():
+    at = start()
+    assert '--baton-count: "0 of 5 handled"' in transient_style(at)
+    at.button(key="got-night-FRZ-12").click().run()
+    style = transient_style(at)
+    assert '--baton-count: "1 of 5 handled"; --baton-done: 0.200' in style
+    assert 'html a.baton-nav-asset[href="#card-FRZ-12"] { --baton-dot: var(--baton-green)' in style
+    assert 'href="#card-WFI-LOOP-1"] { --baton-dot' not in style

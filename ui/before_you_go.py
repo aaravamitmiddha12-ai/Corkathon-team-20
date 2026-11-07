@@ -4,7 +4,7 @@ import streamlit as st
 
 from src import review
 from src.explain import template_bullets
-from ui.components import chip, esc, show
+from ui.components import chip, esc, eyebrow, show
 
 
 def render(result, on_saved) -> None:
@@ -14,6 +14,7 @@ def render(result, on_saved) -> None:
     by_asset = {i.asset_id: i for i in result.top + result.rest}
 
     st.button("← Back to handover", key="back-home", on_click=lambda: st.session_state.update(page="home"))
+    show(eyebrow(1, "Outgoing review", first=True))
     st.title("Before you go")
     show(f'<div class="hc-sub">For {esc(outgoing)}, outgoing engineer ({esc(shift.label)}). '
          f'For these items your notes and the data disagree, or there is no ticket. '
@@ -38,7 +39,7 @@ def render(result, on_saved) -> None:
                 show(f'<div><b>{esc(f.asset_id)}</b>{kind}</div><div>{tags}</div>')
                 wrote, data = st.columns(2, gap="medium")
                 with wrote:
-                    show("<h4 style='font-size:0.85rem;opacity:0.7;margin:0'>WHAT YOU WROTE</h4>")
+                    show('<div class="baton-eyebrow" style="margin:0 0 8px">What you wrote</div>')
                     if len(f.notes):
                         for _, note in f.notes.iterrows():
                             clash = note["time"] in f.clash_note_times
@@ -47,7 +48,7 @@ def render(result, on_saved) -> None:
                     else:
                         show('<div class="hc-muted">You didn\'t write anything about this.</div>')
                 with data:
-                    show("<h4 style='font-size:0.85rem;opacity:0.7;margin:0'>WHAT THE DATA SHOWS</h4>")
+                    show('<div class="baton-eyebrow" style="margin:0 0 8px">What the data shows</div>')
                     show('<ul class="hc-bullets">' + "".join(f"<li>{esc(b)}</li>" for b in template_bullets(item))
                          + "</ul>")
                 previous = saved.get(f.asset_id, {})
