@@ -205,6 +205,20 @@ def test_first_screen_is_an_overview_of_the_handover():
     assert 'class="baton-cta" href="#card-FRZ-12"' in html and "Sign off</b> once all 5 are handled" in html
 
 
+def test_app_stays_offline_even_with_a_key(monkeypatch):
+    """For now the app never calls an AI service, whatever keys are set."""
+    monkeypatch.setenv("GEMINI_API_KEY", "a-key")
+    from src import llm
+
+    def no_calls(*a, **k):
+        raise AssertionError("the app called the AI")
+
+    monkeypatch.setattr(llm, "ask_json", no_calls)
+    at = start()
+    assert not at.exception and at.session_state["result"].mode == "demo"
+    assert not any(b.key and b.key.startswith("baton-ai") for b in at.button)
+
+
 def test_sidebar_lists_every_section_and_the_top_items():
     html = page_html(start())
     for n in range(1, 6):

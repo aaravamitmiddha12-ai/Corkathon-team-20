@@ -123,8 +123,6 @@ html, [data-testid="stMain"] { scroll-behavior: smooth; }
 .baton-nav-track { height: 4px; border-radius: 2px; background: var(--baton-line); overflow: hidden; }
 .baton-nav-fill { display: block; height: 100%; background: var(--baton-green); transform-origin: left center;
   transform: scaleX(var(--baton-done, 0)); transition: transform 300ms cubic-bezier(.2,0,0,1); }
-[data-testid="stSidebar"] [data-testid="stCheckbox"] p { font-size: 12px; color: var(--baton-muted); }
-
 /* The slim top bar, shown below 1024px: the logo and the menu button that opens the sidebar as a drawer. */
 .st-key-baton-topbar { display: none; }
 .baton-topbar { display: flex; align-items: center; gap: 12px; height: 56px; }

@@ -59,8 +59,9 @@ class Result:
 def run(mode: str = "demo", shift: str = DEFAULT_SHIFT) -> Result:
     """mode: "manual" (no cache, no API), "demo" (cache or manual) or "llm" (live calls allowed)."""
     warnings = []
-    if mode == "llm" and not llm.has_api_key():
-        warnings.append("Live LLM is on, but ANTHROPIC_API_KEY is not set: showing offline results.")
+    if mode == "llm" and not llm.load_api_key():  # the environment, or .streamlit/secrets.toml
+        warnings.append("Live LLM is on, but no API key is set (ANTHROPIC_API_KEY or GEMINI_API_KEY): "
+                        "showing offline results.")
         mode = "demo"
 
     pack = load_all(shift=shift)

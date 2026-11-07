@@ -1,0 +1,116 @@
+{
+  "01:30 chiller CH-2 pump 3 making a grinding noise on and off. Vibration looks a bit up. Will log it tmrw if it keeps going.": {
+    "asset_id": "CH-2-P3",
+    "mentions_future_action": true,
+    "model": "gemini-3.5-flash",
+    "reassuring": false
+  },
+  "03:10 WFI loop conductivity blipped, came straight back in spec. Didn't raise anything as it was only a few secs.": {
+    "asset_id": "WFI-LOOP-1",
+    "mentions_future_action": false,
+    "model": "gemini-3.5-flash",
+    "reassuring": true
+  },
+  "04:00 HPLC-07 still down from yesterday, vendor engineer booked for this morning apparently. Lab said they need it for the batch 2611 release test.": {
+    "asset_id": "HPLC-07",
+    "mentions_future_action": true,
+    "model": "gemini-3.5-flash",
+    "reassuring": false
+  },
+  "05:20 cleaners propped the lab B door open, alarm, closed it.": {
+    "asset_id": "DOOR-LAB-B",
+    "mentions_future_action": false,
+    "model": "gemini-3.5-flash",
+    "reassuring": true
+  },
+  "06:10 BAL-03 balance calibration sticker says due today.": {
+    "asset_id": "BAL-03",
+    "mentions_future_action": false,
+    "model": "gemini-3.5-flash",
+    "reassuring": false
+  },
+  "06:45 handing over. Quiet enough night overall.": {
+    "asset_id": null,
+    "mentions_future_action": false,
+    "model": "gemini-3.5-flash",
+    "reassuring": true
+  },
+  "07:35 FRZ-12 checked with handheld probe, actual -79C. Display sensor is faulty, freezer itself fine. WO-1195 raised to replace the probe.": {
+    "asset_id": "FRZ-12",
+    "mentions_future_action": true,
+    "model": "gemini-3.5-flash",
+    "reassuring": true
+  },
+  "08:10 WFI loop: QA informed about last night's excursions, deviation DEV-2207 opened.": {
+    "asset_id": "WFI-LOOP-1",
+    "mentions_future_action": false,
+    "model": "gemini-3.5-flash",
+    "reassuring": false
+  },
+  "09:40 HPLC-07 vendor engineer on site, pump seal replaced, instrument back up. INC-4471 closed.": {
+    "asset_id": "HPLC-07",
+    "mentions_future_action": false,
+    "model": "gemini-3.5-flash",
+    "reassuring": true
+  },
+  "11:20 chiller CH-2 pump 3 still noisy, maintenance will look at it Monday. Seems stable.": {
+    "asset_id": "CH-2-P3",
+    "mentions_future_action": true,
+    "model": "gemini-3.5-flash",
+    "reassuring": true
+  },
+  "13:05 BAL-03 calibrated by Metrology, new sticker on.": {
+    "asset_id": "BAL-03",
+    "mentions_future_action": false,
+    "model": "gemini-3.5-flash",
+    "reassuring": true
+  },
+  "15:30 AHU-4 filter dP creeping up, still within limits.": {
+    "asset_id": "AHU-4",
+    "mentions_future_action": false,
+    "model": "gemini-3.5-flash",
+    "reassuring": true
+  },
+  "16:20 QC lab says incubator INC-2 door gasket is torn, they've taped it for now.": {
+    "asset_id": "INC-2",
+    "mentions_future_action": false,
+    "model": "gemini-3.5-flash",
+    "reassuring": false
+  },
+  "17:50 FRZ-12 still alarming from the bad probe, ignoring per WO-1195.": {
+    "asset_id": "FRZ-12",
+    "mentions_future_action": false,
+    "model": "gemini-3.5-flash",
+    "reassuring": true
+  },
+  "18:45 handing over. All under control.": {
+    "asset_id": null,
+    "mentions_future_action": false,
+    "model": "gemini-3.5-flash",
+    "reassuring": true
+  },
+  "19:20 walked round, all quiet. HVAC AHU-4 filter dP a bit high, within limits, just noting.": {
+    "asset_id": "AHU-4",
+    "mentions_future_action": false,
+    "model": "gemini-3.5-flash",
+    "reassuring": true
+  },
+  "21:05 FRZ-12 (-80 freezer, QC retained samples) temp alarm. Reset it, temp came back down. Seems ok.": {
+    "asset_id": "FRZ-12",
+    "mentions_future_action": false,
+    "model": "gemini-3.5-flash",
+    "reassuring": true
+  },
+  "22:40 printer in QC office out of toner again, left note for admin.": {
+    "asset_id": "PRN-QC-02",
+    "mentions_future_action": true,
+    "model": "gemini-3.5-flash",
+    "reassuring": false
+  },
+  "23:15 FRZ-12 alarmed again, reset again, door was shut properly. Prob sensor? Will mention to day shift.": {
+    "asset_id": "FRZ-12",
+    "mentions_future_action": true,
+    "model": "gemini-3.5-flash",
+    "reassuring": true
+  }
+}

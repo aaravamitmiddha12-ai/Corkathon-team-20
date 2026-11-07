@@ -31,19 +31,17 @@ def state_changed() -> None:
 
 
 def get_result(mode: str, shift_id: str):
-    """Run the pipeline once per (mode, shift, saved-state version), so button clicks don't re-run the LLM."""
+    """Run the pipeline once per (mode, shift, saved-state version), so button clicks don't re-run it."""
     key = (mode, shift_id, st.session_state["state_version"])
     if st.session_state.get("result_key") != key:
-        spinner = "Asking the LLM (results are cached after the first run)..." if mode == "llm" else "Loading..."
-        with st.spinner(spinner):
+        with st.spinner("Loading..."):
             st.session_state["result"] = run(mode=mode, shift=shift_id)
             st.session_state["result_key"] = key
     return st.session_state["result"]
 
 
 # ----- the left sidebar: logo, which handover, who is taking over, the sections, progress, the outgoing
-# engineer's page. Its parts are made in this order, but the bottom is filled first: the LLM toggle there decides
-# which result everything else shows. Below 1024px it's a drawer, opened from the top bar in the main pane.
+# engineer's page. Below 1024px it's a drawer, opened from the top bar in the main pane.
 side_top, side_nav, side_bottom = st.sidebar.container(), st.sidebar.container(), st.sidebar.container(key="baton-nav-bottom")
 on_home = st.session_state["page"] == "home"
 with side_bottom:
@@ -51,13 +49,6 @@ with side_bottom:
     if on_home:
         st.button("Outgoing engineer? Before you go", key="open-before-you-go",  # the arrow is CSS, so it can move
                   on_click=lambda: st.session_state.update(page="before"), width="stretch")
-    use_llm = st.toggle(
-        "Use live LLM",
-        value=False,
-        help="Off = demo mode: cached LLM answers if present, otherwise manual tags and template text. "
-             "Never calls the API.",
-    )
-    st.caption(f"Model: `{llm.model_name()}`" if use_llm else "Demo mode: offline, no API calls.")
 
 with side_top:
     show(logo())
@@ -66,7 +57,10 @@ with side_top:
     st.session_state.setdefault(f"incoming_{shift_id}", SHIFTS[shift_id].incoming_engineer)
     st.text_input("Incoming engineer", key=f"incoming_{shift_id}")
 
-mode = "llm" if use_llm else "demo"
+# Offline for now: the app never calls an AI service. It still shows AI answers already saved in cache/, and
+# falls back to its own templates. (src/llm.py can still use a key from .streamlit/secrets.toml for
+# `python -m src.pipeline --llm`; see the README.)
+mode = "demo"
 result = get_result(mode, shift_id)
 
 with side_nav:

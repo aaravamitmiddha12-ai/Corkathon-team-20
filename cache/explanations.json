@@ -1,0 +1,176 @@
+{
+  "BAL-03:674cf5c6b6ff": {
+    "action": "Coordinate with Metrology to complete calibration ticket CAL-0932 by 2026-11-07 17:00.",
+    "bullets": [
+      "Note 06:10 states the BAL-03 calibration sticker is due today.",
+      "Ticket CAL-0932 is scheduled for Metrology with a due time of 2026-11-07 17:00."
+    ],
+    "citations": [
+      "note 06:10",
+      "CAL-0932"
+    ],
+    "headline": "Analytical balance BAL-03 quarterly calibration is due at 17:00."
+  },
+  "CH-2-P3:473a2cd5d8c1": {
+    "action": "Acknowledge the pending alerts and perform a physical inspection of the pump.",
+    "bullets": [
+      "Vibration readings have increased steadily from 8.3 mm/s at 10:15 to 8.9 mm/s at 16:55.",
+      "The current level of 8.9 mm/s is nearing the 9.0 mm/s alarm limit despite notes suggesting stability.",
+      "Recent alerts at 13:40 and 16:55 remain unacknowledged."
+    ],
+    "citations": [
+      "alert 10:15",
+      "alert 13:40",
+      "alert 16:55",
+      "note 11:20"
+    ],
+    "headline": "Chiller pump vibration is rising and nearing alarm limit"
+  },
+  "CH-2-P3:4f7523d02104": {
+    "action": "Inspect the pump physically to verify the grinding noise and create an urgent maintenance ticket.",
+    "bullets": [
+      "Vibration readings increased from 6.8 mm/s at 01:27 to 8.1 mm/s at 05:58.",
+      "Latest vibration of 8.1 mm/s is significantly above the 6.0 mm/s warning limit.",
+      "The pump is nearing the 9.0 mm/s alarm limit despite the previous shift noting the issue as minor."
+    ],
+    "citations": [
+      "alert 01:27",
+      "alert 04:31",
+      "alert 05:58",
+      "note 01:30"
+    ],
+    "headline": "Chiller pump CH-2-P3 vibration levels are steadily increasing"
+  },
+  "CH-2-P3:e6c78f17a6a0": {
+    "action": "Inspect the chiller pump and open a maintenance ticket immediately.",
+    "bullets": [
+      "Vibration levels have climbed from 6.8 mm/s at 01:27 to 8.1 mm/s at 05:58.",
+      "The current reading of 8.1 mm/s is nearing the 9.0 mm/s alarm limit.",
+      "The note at 01:30 downplays the vibration increase despite the reported grinding noise."
+    ],
+    "citations": [
+      "alert 01:27",
+      "alert 04:31",
+      "alert 05:58",
+      "note 01:30"
+    ],
+    "headline": "Chiller pump vibration is increasing toward alarm limit"
+  },
+  "FRZ-12:4d4997eb8c7c": {
+    "action": "Verify current freezer temperature with a calibrated handheld probe immediately.",
+    "bullets": [
+      "Freezer temperature readings remain consistently above the -70C alarm limit.",
+      "Data shows readings of -62.6C, -62.2C, and -62.0C despite internal notes suggesting the unit is operating normally.",
+      "The freezer recorded three high-severity alerts at 08:50, 12:30, and 16:10."
+    ],
+    "citations": [
+      "alert 08:50",
+      "alert 12:30",
+      "alert 16:10",
+      "note 07:35",
+      "note 17:50",
+      "WO-1195"
+    ],
+    "headline": "FRZ-12 temperature readings above limit and worsening"
+  },
+  "FRZ-12:651da6a913f8": {
+    "action": "Inspect FRZ-12 immediately to determine the cause of the temperature rise above the -70°C limit.",
+    "bullets": [
+      "Notes at 21:05 and 23:15 suggested the issue was resolved or a sensor fault, but temperature readings have continuously increased.",
+      "Temperature readings increased from -64.8°C at 21:03 to -63.1°C at 23:14, -62.5°C at 02:41, and -61.9°C at 06:19, remaining above the -70°C alarm limit.",
+      "The latest alert at 06:19 with a reading of -61.9°C is unacknowledged and there is no open ticket."
+    ],
+    "citations": [
+      "alert 21:03",
+      "alert 23:14",
+      "alert 02:41",
+      "alert 06:19",
+      "note 21:05",
+      "note 23:15"
+    ],
+    "headline": "FRZ-12 freezer temperature is rising above the -70°C limit"
+  },
+  "FRZ-12:f5864155f6bb": {
+    "action": "Initiate a maintenance ticket and inspect the freezer cooling performance immediately.",
+    "bullets": [
+      "Temperature readings are consistently worsening from -64.8C to -63.1C, -62.5C, and finally -61.9C.",
+      "Previous shift notes downplay the issue, despite four high severity alarms since 21:03.",
+      "The most recent alarm at 06:19 remains unacknowledged."
+    ],
+    "citations": [
+      "alert 21:03",
+      "alert 23:14",
+      "alert 02:41",
+      "alert 06:19",
+      "note 21:05",
+      "note 23:15"
+    ],
+    "headline": "FRZ-12 freezer temperature is rising above -70C limit"
+  },
+  "HPLC-07:5c971cfa73db": {
+    "action": "Follow up with Vendor (Agilex) to confirm the engineer arrival before the ticket due time of 2026-11-07 09:00.",
+    "bullets": [
+      "HPLC-07 is down due to a pump pressure fault and is the only qualified instrument for batch release assay.",
+      "Ticket INC-4471 with priority P2 is due at 2026-11-07 09:00 for batch 2611 release testing.",
+      "Note 04:00 notes that a vendor engineer from Vendor (Agilex) is booked for this morning."
+    ],
+    "citations": [
+      "INC-4471",
+      "note 04:00"
+    ],
+    "headline": "HPLC-07 is down with a pump pressure fault"
+  },
+  "INC-2:fdbd9128df98": {
+    "action": "Create a maintenance ticket to replace the INC-2 door gasket.",
+    "bullets": [
+      "The door gasket for QC incubator INC-2 is torn.",
+      "Lab personnel have applied tape as a temporary fix."
+    ],
+    "citations": [
+      "note 16:20"
+    ],
+    "headline": "Torn QC incubator INC-2 door gasket taped temporarily"
+  },
+  "WFI-LOOP-1:5fc308e79531": {
+    "action": "Log a deviation ticket for the WFI loop conductivity excursions.",
+    "bullets": [
+      "Conductivity reached 1.6 uS/cm at 03:09, 1.5 uS/cm at 03:52, and 1.4 uS/cm at 04:58, all exceeding the 1.3 uS/cm limit.",
+      "Note at 03:10 downplayed the initial spike, but unacknowledged high severity alerts continued at 03:52 and 04:58.",
+      "No deviation ticket has been created, although site rules require logging every excursion within 24 h."
+    ],
+    "citations": [
+      "alert 03:09",
+      "alert 03:52",
+      "alert 04:58",
+      "note 03:10"
+    ],
+    "headline": "WFI loop conductivity exceeded limit repeatedly despite reassuring note"
+  },
+  "WFI-LOOP-1:d6defd250dfd": {
+    "action": "Open a deviation ticket for the WFI loop excursions immediately.",
+    "bullets": [
+      "Conductivity reached 1.6 µS/cm, 1.5 µS/cm, and 1.4 µS/cm against the 1.3 µS/cm limit.",
+      "The 03:10 note downplays the issue, despite two further excursions occurring at 03:52 and 04:58.",
+      "Three high severity alerts occurred between 03:09 and 04:58, but remain unacknowledged."
+    ],
+    "citations": [
+      "alert 03:09",
+      "alert 03:52",
+      "alert 04:58",
+      "note 03:10"
+    ],
+    "headline": "WFI conductivity repeatedly exceeds limit of 1.3 µS/cm"
+  },
+  "WFI-LOOP-1:f4ebda357203": {
+    "action": "Confirm with QA that the deviation process remains on track for the 03:09 deadline.",
+    "bullets": [
+      "Conductivity excursions occurred at 03:09, 03:52, and 04:58.",
+      "The deviation DEV-2207 is open and due by 2026-11-08 03:09."
+    ],
+    "citations": [
+      "note 08:10",
+      "DEV-2207"
+    ],
+    "headline": "Conductivity excursions in WFI loop require pending deviation completion"
+  }
+}

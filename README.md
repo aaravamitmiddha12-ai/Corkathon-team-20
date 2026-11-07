@@ -73,6 +73,16 @@ The files are recreated empty on the next run.
 
 ### Optional: live LLM
 
+**The app runs offline for now:** it never calls an AI service, and shows the AI answers saved in `cache/`
+(or its own templates). To fill or refresh `cache/`, run the pipeline with a key: **Anthropic** (Claude, paid)
+or **Google Gemini** (has a free tier, from aistudio.google.com). Each answer is saved, so it's only asked for
+once. On Gemini's free tier, a busy or used-up model moves to `gemini-3.1-flash-lite`.
+
+1. **A file (simplest):** create `.streamlit/secrets.toml` (git ignores it), for example:
+   `GEMINI_API_KEY = "..."` and `LLM_PROVIDER = "gemini"`, or `ANTHROPIC_API_KEY = "sk-ant-..."`.
+   See `.streamlit/secrets.toml.example`. With both keys, `LLM_PROVIDER` picks; without it, Anthropic goes first.
+2. **Environment variables**, which win over the file:
+
 ```bash
 # Windows PowerShell:  $env:ANTHROPIC_API_KEY = "sk-ant-..."
 # macOS/Linux:         export ANTHROPIC_API_KEY=sk-ant-...
@@ -82,9 +92,8 @@ python -m src.pipeline --llm                 # Sat 07:00 handover: fills cache/
 python -m src.pipeline --llm --shift day     # Sat 19:00 handover
 ```
 
-The app's default demo mode then reads `cache/` without calling the API. The sidebar toggle
-**Use live LLM** allows real calls for anything not cached yet. The key is only ever read from
-the `ANTHROPIC_API_KEY` environment variable.
+Restart the app after adding or changing the key. Never commit a key: `.streamlit/secrets.toml` and `.env` are
+in `.gitignore`.
 
 ---
 

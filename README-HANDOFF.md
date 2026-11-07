@@ -183,7 +183,7 @@ The owner then asked for a restyle in four parts. Where it changes a rule above,
   the evidence chart's warning line and the jump flash are neutral. Green = handled. Red = over limit/overdue.
 - **5. Sidebar** (replaced the sticky header from section 4): Streamlit's own sidebar, fixed at 240px, holds the
   logo, the handover picker, the incoming engineer, section nav with the 5 items and status dots, progress, the
-  Before you go button and the LLM toggle. Below 1024px it's a drawer opened from a slim top bar (Esc, backdrop
+  Before you go button. (The LLM toggle is gone and the app runs offline for now, using the answers saved in cache/; see README.) Below 1024px it's a drawer opened from a slim top bar (Esc, backdrop
   click and nav clicks close it; focus is trapped). Scroll-spy uses IntersectionObserver; the indicator slides.
   "Needs you first" now comes before "What the notes say" (left column / first when stacked) to match the nav
   numbering, and "Also checked" moved below both columns as section 05.
