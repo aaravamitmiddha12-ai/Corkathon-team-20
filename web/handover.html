@@ -1,0 +1,59 @@
+<!doctype html>
+<!-- Minimal target for the home page's links. Replace with the full handover screen when it exists:
+     keep the file name and the id="<asset id>" on each item so those links keep working. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Handover Check: handover</title>
+<link rel="stylesheet" href="home.css">
+<script src="theme.js"></script>
+<style>
+  #items { display: grid; gap: 12px; padding-block: 24px 48px; }
+  article { padding: 16px 20px; scroll-margin-top: 16px; }
+  article.target { border-color: var(--muted); }
+  article h2 { font-size: 15px; font-weight: 600; margin-top: 2px; }
+  article p { margin-top: 6px; }
+  article .action { font-weight: 500; }
+</style>
+</head>
+<body>
+<header class="topbar">
+  <div class="wrap"><a class="brand" href="home.html"><b>← Handover Check</b></a></div>
+</header>
+<main class="wrap" id="items" tabindex="-1"></main>
+<script src="../out/handover.js"></script>
+<script>
+  (function () {
+    var list = document.getElementById("items");
+    var data = window.HANDOVER_DATA;
+    function add(parent, tag, cls, text) {
+      var node = parent.appendChild(document.createElement(tag));
+      if (cls) node.className = cls;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+    if (!data) {
+      add(list, "p", "muted", "No data yet. Run python -m src.export, then reload.");
+      return;
+    }
+    data.items.forEach(function (item) {
+      var card = add(list, "article", "card");
+      card.id = item.asset_id;
+      add(card, "span", "rank", item.rank);
+      add(card, "h2", "", item.title);
+      add(card, "p", "", item.why);
+      add(card, "p", "action", item.action);
+    });
+    var target = document.getElementById(decodeURIComponent(location.hash.slice(1)));
+    if (target) {
+      target.classList.add("target");
+      target.scrollIntoView();
+    }
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") location.href = "home.html";
+    });
+  })();
+</script>
+</body>
+</html>
